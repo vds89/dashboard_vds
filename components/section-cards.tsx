@@ -1,3 +1,5 @@
+"use client"
+
 import { IconTrendingDown, IconTrendingUp } from "@tabler/icons-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -9,15 +11,49 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { useEffect, useState } from "react";
 
-export function SectionCards() {
+async function fetchLastYearIncome() {
+  try {
+    const response = await fetch("/api/finance/last-year-income"); // Ensure the correct API route
+    if (!response.ok) throw new Error("Failed to fetch last year income");
+    const data = await response.json();
+    return data.lastYearIncome || 0;
+  } catch (error) {
+    console.error("Error fetching last year income:", error);
+    return 0;
+  }
+}
+
+
+export function SectionCards({ timeRange }: { timeRange: string }) {
+  const [totalIncome, setTotalIncome] = useState<number | null>(null);
+  const [lastYearIncome, setLastYearIncome] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchTotalIncome(timeRange).then(setTotalIncome);
+    fetchLastYearIncome().then(setLastYearIncome);
+  }, [timeRange]);
+
+  async function fetchTotalIncome(timeRange: string) {
+    try {
+      const response = await fetch(`/api/finance/total-income?timeRange=${timeRange}`);
+      if (!response.ok) throw new Error("Failed to fetch total income");
+      const data = await response.json();
+      return data.totalIncome || 0;
+    } catch (error) {
+      console.error("Error fetching total income:", error);
+      return 0;
+    }
+  }
+
   return (
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
       <Card className="@container/card">
         <CardHeader>
           <CardDescription>Total Revenue</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            $1,250.00
+          {totalIncome !== null ? `$${totalIncome.toLocaleString()}` : "Loading..."}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -37,9 +73,9 @@ export function SectionCards() {
       </Card>
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>New Customers</CardDescription>
+          <CardDescription>Last year income</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            1,234
+            {lastYearIncome !== null ? `$${lastYearIncome.toLocaleString()}` : "Loading..."}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -61,7 +97,7 @@ export function SectionCards() {
         <CardHeader>
           <CardDescription>Active Accounts</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            45,678
+            XXXX,XX
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
@@ -79,9 +115,9 @@ export function SectionCards() {
       </Card>
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Growth Rate</CardDescription>
+          <CardDescription>Saving Rate</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            4.5%
+            XX%
           </CardTitle>
           <CardAction>
             <Badge variant="outline">

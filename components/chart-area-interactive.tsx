@@ -19,13 +19,6 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
@@ -144,9 +137,8 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-export function ChartAreaInteractive() {
+export function ChartAreaInteractive({ timeRange, setTimeRange }: { timeRange: string, setTimeRange: React.Dispatch<React.SetStateAction<string>> }) {
   const isMobile = useIsMobile();
-  const [timeRange, setTimeRange] = React.useState("full");
   const [customStartDate] = React.useState(null);
   const [customEndDate] = React.useState(null);
 
@@ -154,7 +146,11 @@ export function ChartAreaInteractive() {
     if (isMobile) {
       setTimeRange("7d");
     }
-  }, [isMobile]);
+  }, [isMobile, setTimeRange]);
+
+  const handleTimeRangeChange = (newTimeRange: string) => {
+    setTimeRange(newTimeRange); // Update parent component's timeRange state
+  };
 
   const filteredData = chartData.filter((item) => {
     const itemDate = new Date(item.date);
@@ -177,7 +173,6 @@ export function ChartAreaInteractive() {
         return itemDate >= start && itemDate <= end;
       }
     }
-
     // For other ranges, compare dates
     return itemDate >= startDate;
   });
@@ -196,7 +191,7 @@ export function ChartAreaInteractive() {
           <ToggleGroup
             type="single"
             value={timeRange}
-            onValueChange={setTimeRange}
+            onValueChange={handleTimeRangeChange}
             variant="outline"
             className="hidden *:data-[slot=toggle-group-item]:!px-4 @[767px]/card:flex"
           >
@@ -205,32 +200,8 @@ export function ChartAreaInteractive() {
             <ToggleGroupItem value="180d">Last 6 months</ToggleGroupItem>
             <ToggleGroupItem value="custom">Custom Period</ToggleGroupItem>
           </ToggleGroup>
-
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger
-              className="flex w-40 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate @[767px]/card:hidden"
-              size="sm"
-              aria-label="Select a value"
-            >
-              <SelectValue placeholder="Full Data" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="180d" className="rounded-lg">
-                Last 3 months
-              </SelectItem>
-              <SelectItem value="1y" className="rounded-lg">
-                Last Year
-              </SelectItem>
-              <SelectItem value="full" className="rounded-lg">
-                Full Data
-              </SelectItem>
-              <SelectItem value="custom" className="rounded-lg">
-                Custom Period
-              </SelectItem>
-            </SelectContent>
-          </Select>
         </CardAction>
-      </CardHeader>
+      </CardHeader>                       
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         <ChartContainer
           config={chartConfig}
