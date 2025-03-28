@@ -13,26 +13,13 @@ import {
 } from "@/components/ui/card"
 import { useEffect, useState } from "react";
 
-async function fetchLastYearIncome() {
-  try {
-    const response = await fetch("/api/finance/last-year-income"); // Ensure the correct API route
-    if (!response.ok) throw new Error("Failed to fetch last year income");
-    const data = await response.json();
-    return data.lastYearIncome || 0;
-  } catch (error) {
-    console.error("Error fetching last year income:", error);
-    return 0;
-  }
-}
-
-
 export function SectionCards({ timeRange }: { timeRange: string }) {
   const [totalIncome, setTotalIncome] = useState<number | null>(null);
-  const [lastYearIncome, setLastYearIncome] = useState<number | null>(null);
+  const [totalOutcome, setTotalOutcome] = useState<number | null>(null);
 
   useEffect(() => {
     fetchTotalIncome(timeRange).then(setTotalIncome);
-    fetchLastYearIncome().then(setLastYearIncome);
+    fetchTotalOutcome(timeRange).then(setTotalOutcome);
   }, [timeRange]);
 
   async function fetchTotalIncome(timeRange: string) {
@@ -47,11 +34,23 @@ export function SectionCards({ timeRange }: { timeRange: string }) {
     }
   }
 
+  async function fetchTotalOutcome(timeRange: string) {
+    try {
+      const response = await fetch(`/api/finance/total-outcome?timeRange=${timeRange}`);
+      if (!response.ok) throw new Error("Failed to fetch total outcome");
+      const data = await response.json();
+      return data.totalOutcome || 0;
+    } catch (error) {
+      console.error("Error fetching total outcome:", error);
+      return 0;
+    }
+  }
+
   return (
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Total Revenue</CardDescription>
+          <CardDescription>Total {timeRange} Income</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
           {totalIncome !== null ? `$${totalIncome.toLocaleString()}` : "Loading..."}
           </CardTitle>
@@ -73,9 +72,9 @@ export function SectionCards({ timeRange }: { timeRange: string }) {
       </Card>
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Last year income</CardDescription>
+          <CardDescription>Total {timeRange} Outcome</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {lastYearIncome !== null ? `$${lastYearIncome.toLocaleString()}` : "Loading..."}
+            {totalOutcome !== null ? `$${totalOutcome.toLocaleString()}` : "Loading..."}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">

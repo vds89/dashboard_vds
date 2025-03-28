@@ -1,31 +1,50 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const timeRange = searchParams.get('timeRange'); // Retrieve the timeRange from the query
+
     // Get the current date
-    const today = new Date();
+    const currentDate = new Date();
 
-    // Calculate the start and end of the same month last year
-    const startOfLastYearMonth = new Date(today.getFullYear() - 1, today.getMonth(), 1);
-    const endOfLastYearMonth = new Date(today.getFullYear() - 1, today.getMonth() + 1, 0); // Last day of that month
+    let startDate: Date | null = null;
 
-    // Query the total income for the same month last year
+    // Set the start date based on the timeRange
+    if (timeRange === 'full') {
+      startDate = null; // Full data, no filtering
+    } else if (timeRange === '1y') {
+      // Last year
+      startDate = new Date();
+      startDate.setFullYear(currentDate.getFullYear() - 1);
+    } else if (timeRange === '180d') {
+      // Last 6 months
+      startDate = new Date();
+      startDate.setMonth(currentDate.getMonth() - 6);
+    } else if (timeRange === 'custom') {
+      // Handle custom date range if needed (implement custom logic)
+      // Example: if customStartDate and customEndDate are provided, use them
+      // This part would be handled based on the custom logic you implement
+    }
+
+    // Query the database, considering the timeRange
     const result = await prisma.vds_finance.aggregate({
       _sum: {
-        income: true,
+        outcome: true,
       },
       where: {
-        date: {
-          gte: startOfLastYearMonth, // Start of last year's month
-          lte: endOfLastYearMonth, // End of last year's month
-        },
+        date: startDate
+          ? {
+              gte: startDate, // Filter based on the start date
+            }
+          : undefined, // If no start date, fetch all data
       },
     });
-    console.log('LAST YEAR INCOMEs = ', result._sum.income)
-    return NextResponse.json({ totalIncomeLastYearMonth: result._sum.income || 0 });
+    console.log(`TOTAL OUTCOME LAST ${timeRange} MONTHS = `, timeRange, result._sum.outcome);
+    return NextResponse.json({ totalOutcome: result._sum.outcome || 0 });
   } catch (error) {
-    console.error('Error fetching last year income for the month:', error);
-    return NextResponse.json({ error: 'Failed to fetch last year income for the month' }, { status: 500 });
+    console.error('Error fetching total outcome:', error);
+    return NextResponse.json({ error: 'Failed to fetch total outcome' }, { status: 500 });
   }
 }

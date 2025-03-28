@@ -13,7 +13,7 @@ import * as React from "react"
 import data from "./data.json"
 
 export default function Page() {
-  const [timeRange, setTimeRange] = React.useState("full");
+  const [timeRange, setTimeRange] = React.useState("complete");
 
   return (
     <SidebarProvider

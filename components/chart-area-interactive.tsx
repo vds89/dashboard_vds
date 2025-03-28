@@ -163,7 +163,7 @@ export function ChartAreaInteractive({ timeRange, setTimeRange }: { timeRange: s
       startDate.setMonth(startDate.getMonth() - 3);        // Last 3 months
     }  else if (timeRange === "1y") {
       startDate.setFullYear(startDate.getFullYear() - 1); // Last year
-    } else if (timeRange === "full") {
+    } else if (timeRange === "complete") {
       startDate = new Date(0);                            // Full data set, no filtering
     } else if (timeRange === "custom") {
       // Custom period filtering
@@ -195,7 +195,7 @@ export function ChartAreaInteractive({ timeRange, setTimeRange }: { timeRange: s
             variant="outline"
             className="hidden *:data-[slot=toggle-group-item]:!px-4 @[767px]/card:flex"
           >
-            <ToggleGroupItem value="full">Full Data</ToggleGroupItem>
+            <ToggleGroupItem value="complete">Complete Data</ToggleGroupItem>
             <ToggleGroupItem value="1y">Last Year</ToggleGroupItem>
             <ToggleGroupItem value="180d">Last 6 months</ToggleGroupItem>
             <ToggleGroupItem value="custom">Custom Period</ToggleGroupItem>
