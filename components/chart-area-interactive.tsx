@@ -147,8 +147,8 @@ const chartConfig = {
 export function ChartAreaInteractive() {
   const isMobile = useIsMobile();
   const [timeRange, setTimeRange] = React.useState("full");
-  const [customStartDate, setCustomStartDate] = React.useState(null);
-  const [customEndDate, setCustomEndDate] = React.useState(null);
+  const [customStartDate] = React.useState(null);
+  const [customEndDate] = React.useState(null);
 
   React.useEffect(() => {
     if (isMobile) {
