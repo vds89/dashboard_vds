@@ -1,6 +1,5 @@
 import prisma from "@/lib/prisma";
 import { startOfMonth, endOfMonth, subMonths } from "date-fns";
-import { NextRequest } from "next/server";
 import { vds_finance } from "@prisma/client"; // Importing the type for the Prisma model
 
 export async function GET() {
