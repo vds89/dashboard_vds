@@ -34,11 +34,11 @@ type FinanceEntry = {
 const chartConfig = {
   income: {
     label: "Income",
-    color: "var(--color-Income)",
+    color: "var(--primary)",  
   },
   outcome: {
     label: "Outcome",
-    color: "var(--color-Outcome)",
+    color: "var(--chart-1)",
   },
 } satisfies ChartConfig;
 
@@ -129,24 +129,24 @@ export function ChartAreaInteractive({
               <linearGradient id="fillIncome" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--color-Income)"
+                  stopColor="var(--primary)"
                   stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--color-Income)"
+                  stopColor="var(--primary)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
               <linearGradient id="fillOutcome" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--color-Outcome)"
+                  stopColor="var(--chart-1)"
                   stopOpacity={1.0}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--color-Outcome)"
+                  stopColor="var(--chart-1)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
@@ -186,14 +186,14 @@ export function ChartAreaInteractive({
               dataKey="income"
               type="natural"
               fill="url(#fillIncome)"
-              stroke="var(--color-Income)"
+              stroke="var(--primary)"
               stackId="a"
             />
             <Area
               dataKey="outcome"
               type="natural"
               fill="url(#fillOutcome)"
-              stroke="var(--color-Outcome)"
+              stroke="var(--chart-1)"
               stackId="b"
             />
           </AreaChart>
