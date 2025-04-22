@@ -73,7 +73,7 @@ export function ChartAreaInteractive({
         const data = await response.json();
 
         setChartData(
-          (data.data || []).map((item: any) => ({
+          (data.data || []).map((item: FinanceEntry) => ({
             ...item,
             date: new Date(item.date).toLocaleDateString("en-GB", {
               year: "numeric",

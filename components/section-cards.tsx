@@ -12,7 +12,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { useEffect, useState } from "react";
-import { time } from "console";
 
 export function SectionCards({ timeRange }: { timeRange: string }) {
   const [totalIncome, setTotalIncome] = useState<number | null>(null);
@@ -39,7 +38,7 @@ export function SectionCards({ timeRange }: { timeRange: string }) {
         const rate = ((income - outcome) / income) * 100;
         setSavingRate(rate);
       } else {
-        0; // oppure 0, a seconda di cosa vuoi mostrare
+        setSavingRate(0); // oppure 0, a seconda di cosa vuoi mostrare
       }
     }
   

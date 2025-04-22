@@ -4,8 +4,7 @@ import { NextRequest } from "next/server";
 import { vds_finance } from "@prisma/client"; // Importing the type for the Prisma model
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-
+  
   const now = new Date(subMonths(new Date(2025,2,2), 1));
   
   // Adjusting start and end dates to ensure proper UTC conversion

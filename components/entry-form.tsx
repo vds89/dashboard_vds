@@ -39,8 +39,12 @@ export function FinanceEntryForm() {
       setDate("");
       setIncome("");
       setOutcome("");
-    } catch (err: any) {
-      setMessage(err.message);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setMessage(err.message);
+      } else {
+        setMessage("An unknown error occurred");
+      }
     } finally {
       setLoading(false);
     }
