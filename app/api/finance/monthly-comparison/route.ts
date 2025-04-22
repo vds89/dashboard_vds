@@ -5,7 +5,6 @@ import { vds_finance } from "@prisma/client"; // Importing the type for the Pris
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const timeRange = searchParams.get("timeRange"); // eventually usable for other ranges
 
   const now = new Date(subMonths(new Date(2025,2,2), 1));
   
