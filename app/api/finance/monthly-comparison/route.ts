@@ -3,7 +3,7 @@ import { startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { NextRequest } from "next/server";
 import { vds_finance } from "@prisma/client"; // Importing the type for the Prisma model
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   
   const now = new Date(subMonths(new Date(2025,2,2), 1));
   
