@@ -41,7 +41,7 @@ export async function GET(request: Request) {
           : undefined, // If no start date, fetch all data
       },
     });
-    console.log(`TOTAL OUTCOME LAST ${timeRange} MONTHS = `, timeRange, result._sum.outcome);
+    //console.log(`TOTAL OUTCOME LAST ${timeRange} MONTHS = `, timeRange, result._sum.outcome);
     return NextResponse.json({ totalOutcome: result._sum.outcome || 0 });
   } catch (error) {
     console.error('Error fetching total outcome:', error);

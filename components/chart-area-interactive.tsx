@@ -22,6 +22,59 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
+import { Calendar } from "@/components/ui/calendar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+
+function CustomToggleGroupItem({
+  value,
+  dateRange,
+  setDateRange,
+  setTimeRange,
+}: {
+  value: string;
+dateRange: { from: Date | null; to: Date | null }
+setDateRange: React.Dispatch<React.SetStateAction<{ from: Date | null; to: Date | null }>>
+  setTimeRange: React.Dispatch<React.SetStateAction<string>>;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <ToggleGroupItem
+          value={value}
+          onClick={() => {
+            setTimeRange(value);
+            setOpen((prev) => !prev);
+          }}
+        >
+          Custom Period
+        </ToggleGroupItem>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          initialFocus
+          mode="range"
+          defaultMonth={dateRange.from ?? undefined}
+          selected={{
+            from: dateRange.from ?? undefined,
+            to: dateRange.to ?? undefined,
+          }}
+          onSelect={(range) => {
+            if (range) {
+              setDateRange({ from: range.from ?? null, to: range.to ?? null });
+            }
+          }}
+          numberOfMonths={2}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export const description = "An interactive area chart"
 
@@ -38,7 +91,7 @@ const chartConfig = {
   },
   outcome: {
     label: "Outcome",
-    color: "var(--chart-1)",
+    color: "var(--chart-5)",
   },
 } satisfies ChartConfig;
 
@@ -50,9 +103,11 @@ export function ChartAreaInteractive({
   setTimeRange: React.Dispatch<React.SetStateAction<string>>;
 }) {
   const isMobile = useIsMobile();
-  const [customStartDate] = React.useState<Date | null>(null);
-  const [customEndDate] = React.useState<Date | null>(null);
   const [chartData, setChartData] = React.useState<FinanceEntry[]>([]);
+  const [dateRange, setDateRange] = React.useState<{ from: Date | null; to: Date | null }>({
+    from: null,
+    to: null,
+  });
 
   React.useEffect(() => {
     if (isMobile) {
@@ -64,9 +119,10 @@ export function ChartAreaInteractive({
     async function loadData() {
       try {
         let url = `/api/finance/db-fetching?timeRange=${timeRange}`;
-        if (timeRange === "custom" && customStartDate && customEndDate) {
-          url += `&start=${customStartDate.toISOString()}&end=${customEndDate.toISOString()}`;
+        if (timeRange === "custom" && dateRange.from && dateRange.to) {
+          url += `&start=${dateRange.from.toISOString()}&end=${dateRange.to.toISOString()}`;
         }
+        console.log("API Request URL:", url); // Log the API request URL with the custom date range
 
         const response = await fetch(url);
         if (!response.ok) throw new Error("Failed to fetch outcome entries");
@@ -88,11 +144,7 @@ export function ChartAreaInteractive({
     }
 
     loadData();
-  }, [timeRange, customStartDate, customEndDate]);
-
-  const handleTimeRangeChange = (newTimeRange: string) => {
-    setTimeRange(newTimeRange);
-  };
+  }, [timeRange, dateRange]);
 
   return (
     <Card className="@container/card">
@@ -108,15 +160,20 @@ export function ChartAreaInteractive({
           <ToggleGroup
             type="single"
             value={timeRange}
-            onValueChange={handleTimeRangeChange}
+            onValueChange={setTimeRange}
             variant="outline"
             className="hidden *:data-[slot=toggle-group-item]:!px-4 @[767px]/card:flex"
           >
-            <ToggleGroupItem value="complete">Complete Data</ToggleGroupItem>
+            <ToggleGroupItem value="full">Complete Data</ToggleGroupItem>
             <ToggleGroupItem value="1y">Last Year</ToggleGroupItem>
             <ToggleGroupItem value="180d">Last 6 months</ToggleGroupItem>
-            <ToggleGroupItem value="custom">Custom Period</ToggleGroupItem>
-          </ToggleGroup>
+            <CustomToggleGroupItem
+              value="custom"
+              dateRange={dateRange}
+              setDateRange={setDateRange}
+              setTimeRange={setTimeRange}
+            />
+          </ToggleGroup>        
         </CardAction>
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
@@ -129,24 +186,24 @@ export function ChartAreaInteractive({
               <linearGradient id="fillIncome" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--primary)"
+                  stopColor="var(--color-income)"
                   stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--primary)"
+                  stopColor="var(--color-income)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
               <linearGradient id="fillOutcome" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--chart-1)"
+                  stopColor="var(--color-outcome)"
                   stopOpacity={1.0}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--chart-1)"
+                  stopColor="var(--color-outcome)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
@@ -186,14 +243,14 @@ export function ChartAreaInteractive({
               dataKey="income"
               type="natural"
               fill="url(#fillIncome)"
-              stroke="var(--primary)"
+              stroke="var(--color-income)"
               stackId="a"
             />
             <Area
               dataKey="outcome"
               type="natural"
               fill="url(#fillOutcome)"
-              stroke="var(--chart-1)"
+              stroke="var(--color-outcome)"
               stackId="b"
             />
           </AreaChart>

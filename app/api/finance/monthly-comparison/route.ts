@@ -12,10 +12,10 @@ export async function GET() {
   
   const previousStart = new Date(startOfMonth(subMonths(now, 1)).setUTCHours(0, 0, 0, 0));  // Start of the previous month (in UTC)
   const previousEnd = new Date(endOfMonth(subMonths(now, 1)).setUTCHours(23, 59, 59, 999)); // End of the previous month (in UTC)
-  console.log("Current Start:", currentStart);
-  console.log("Current End:", currentEnd);
-  console.log("Previous Start:", previousStart);
-  console.log("Previous End:", previousEnd);
+  //console.log("Current Start:", currentStart);
+  //console.log("Current End:", currentEnd);
+  //console.log("Previous Start:", previousStart);
+  //console.log("Previous End:", previousEnd);
 
   try {
     // Fetch current month data within the range
@@ -44,15 +44,15 @@ export async function GET() {
     const currentOutcome = current.reduce((sum, entry: vds_finance) => sum + entry.outcome, 0);
     const previousOutcome = previous.reduce((sum, entry: vds_finance) => sum + entry.outcome, 0);
 
-    console.log("Current IN:", currentIncome);
-    console.log("Current OUT:", currentOutcome);
-    console.log("Previous IN:", previousIncome);
-    console.log("Previous OUT:", previousOutcome);
+    //console.log("Current IN:", currentIncome);
+    //console.log("Current OUT:", currentOutcome);
+    //console.log("Previous IN:", previousIncome);
+    //console.log("Previous OUT:", previousOutcome);
     // Calculating percentage changes
     const incomeChange = calculateChange(previousIncome, currentIncome);
     const outcomeChange = calculateChange(previousOutcome, currentOutcome);
-    console.log("Income Change:", incomeChange);
-    console.log("Outcome Change:", outcomeChange);
+    //console.log("Income Change:", incomeChange);
+    //console.log("Outcome Change:", outcomeChange);
     return Response.json({
       currentIncome,
       previousIncome,

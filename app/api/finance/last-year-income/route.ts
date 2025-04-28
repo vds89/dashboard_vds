@@ -23,7 +23,7 @@ export async function GET() {
       },
     });
 
-    console.log('TOTAL INCOME LAST 12**** MONTHS = ', result._sum.income);
+    //console.log('TOTAL INCOME LAST 12**** MONTHS = ', result._sum.income);
 
     return NextResponse.json({ lastYearIncome: result._sum.income || 0 });
   } catch (error) {
