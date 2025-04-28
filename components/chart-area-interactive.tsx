@@ -22,12 +22,6 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 
 function CustomToggleGroupItem({
   value,
@@ -57,7 +51,7 @@ setDateRange: React.Dispatch<React.SetStateAction<{ from: Date | null; to: Date 
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
-          initialFocus
+          autoFocus
           mode="range"
           defaultMonth={dateRange.from ?? undefined}
           selected={{
@@ -75,6 +69,13 @@ setDateRange: React.Dispatch<React.SetStateAction<{ from: Date | null; to: Date 
     </Popover>
   );
 }
+
+import { Calendar } from "@/components/ui/calendar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 export const description = "An interactive area chart"
 
