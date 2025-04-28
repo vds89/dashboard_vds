@@ -30,8 +30,8 @@ function CustomToggleGroupItem({
   setTimeRange,
 }: {
   value: string;
-dateRange: { from: Date | null; to: Date | null }
-setDateRange: React.Dispatch<React.SetStateAction<{ from: Date | null; to: Date | null }>>
+  dateRange: { from: Date | null; to: Date | null }
+  setDateRange: React.Dispatch<React.SetStateAction<{ from: Date | null; to: Date | null }>>
   setTimeRange: React.Dispatch<React.SetStateAction<string>>;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -51,7 +51,6 @@ setDateRange: React.Dispatch<React.SetStateAction<{ from: Date | null; to: Date 
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
-          autoFocus
           mode="range"
           defaultMonth={dateRange.from ?? undefined}
           selected={{
