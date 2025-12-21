@@ -1,28 +1,33 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { MonthlyPortfolio } from '@prisma/client'; // Importiamo il tipo generato da Prisma
 
 export async function GET() {
   try {
-    // Recuperiamo gli ultimi DUE mesi
     const monthlyData = await prisma.monthlyPortfolio.findMany({
       orderBy: { month: 'desc' },
       take: 2
     });
     
     if (monthlyData.length === 0) {
-      return NextResponse.json({ summary: [], totalValue: 0 });
+      return NextResponse.json({ summary: [], totalValue: 0, totalTrend: 0 });
     }
 
     const latest = monthlyData[0];
-    const previous = monthlyData[1]; // Potrebbe essere undefined se c'è solo un mese
+    const previous = monthlyData[1];
 
-    const calculateTotals = (data: any) => {
+    // Definiamo il tipo esatto invece di 'any'
+    const calculateTotals = (data: MonthlyPortfolio | null | undefined) => {
       if (!data) return { liquidity: 0, stock: 0, crypto: 0, pension: 0, total: 0 };
       
       const liquidity = data.ing + data.bbva + data.revolut + data.directa;
-      // Usiamo prezzi placeholder o i campi bond (come visto prima)
+      
+      // Calcolo Stocks (Quantità * Prezzi stimati + Bond in EUR)
       const stock = data.bond + (data.mwrd * 85) + (data.smea * 30) + (data.xmme * 40);
-      const crypto = data.usdt + (data.eth * 2500) + (data.sol * 100) + (data.link * 15);
+      
+      // Calcolo Crypto (Quantità * Prezzi stimati)
+      const crypto = data.usdt + (data.eth * 2500) + (data.sol * 100) + (data.link * 15) + (data.op * 2);
+      
       const pension = data.cometa;
       const total = liquidity + stock + crypto + pension;
       
@@ -48,7 +53,7 @@ export async function GET() {
       assetClass: asset.name,
       totalQuantity: asset.current,
       allocation: latestTotals.total > 0 ? (asset.current / latestTotals.total) * 100 : 0,
-      trend: calculateTrend(asset.current, asset.prev) // Aggiungiamo il trend
+      trend: calculateTrend(asset.current, asset.prev)
     }));
 
     return NextResponse.json({ 
@@ -58,6 +63,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error calculating summary:', error);
-    return NextResponse.json({ error: 'Failed' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to calculate summary' }, { status: 500 });
   }
 }
