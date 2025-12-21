@@ -1,53 +1,63 @@
-// app/api/portfolio/summary/route.ts
-
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 export async function GET() {
   try {
-    // Get latest monthly data for current portfolio value calculation
-    const latestData = await prisma.monthlyPortfolio.findFirst({
-      orderBy: { month: 'desc' }
+    // Recuperiamo gli ultimi DUE mesi
+    const monthlyData = await prisma.monthlyPortfolio.findMany({
+      orderBy: { month: 'desc' },
+      take: 2
     });
     
-    if (!latestData) {
-      return NextResponse.json([]);
+    if (monthlyData.length === 0) {
+      return NextResponse.json({ summary: [], totalValue: 0 });
     }
-    
-    // Calculate total portfolio value from latest monthly data
-    const liquidityTotal = latestData.ing + latestData.bbva + latestData.revolut + latestData.directa;
-    const stockTotal = latestData.bond; // Bond is stored in EUR
-    const cryptoTotal = latestData.usdt; // Using USDT as stable reference
-    const fondoPensioneTotal = latestData.cometa;
-    
-    const totalPortfolioValue = liquidityTotal + stockTotal + cryptoTotal + fondoPensioneTotal;
-    
-    const summary = [
-      {
-        assetClass: 'Liquidity',
-        totalQuantity: liquidityTotal,
-        allocation: totalPortfolioValue > 0 ? (liquidityTotal / totalPortfolioValue) * 100 : 0
-      },
-      {
-        assetClass: 'Stock',
-        totalQuantity: stockTotal,
-        allocation: totalPortfolioValue > 0 ? (stockTotal / totalPortfolioValue) * 100 : 0
-      },
-      {
-        assetClass: 'Crypto',
-        totalQuantity: cryptoTotal,
-        allocation: totalPortfolioValue > 0 ? (cryptoTotal / totalPortfolioValue) * 100 : 0
-      },
-      {
-        assetClass: 'Fondo Pensione',
-        totalQuantity: fondoPensioneTotal,
-        allocation: totalPortfolioValue > 0 ? (fondoPensioneTotal / totalPortfolioValue) * 100 : 0
-      }
+
+    const latest = monthlyData[0];
+    const previous = monthlyData[1]; // Potrebbe essere undefined se c'è solo un mese
+
+    const calculateTotals = (data: any) => {
+      if (!data) return { liquidity: 0, stock: 0, crypto: 0, pension: 0, total: 0 };
+      
+      const liquidity = data.ing + data.bbva + data.revolut + data.directa;
+      // Usiamo prezzi placeholder o i campi bond (come visto prima)
+      const stock = data.bond + (data.mwrd * 85) + (data.smea * 30) + (data.xmme * 40);
+      const crypto = data.usdt + (data.eth * 2500) + (data.sol * 100) + (data.link * 15);
+      const pension = data.cometa;
+      const total = liquidity + stock + crypto + pension;
+      
+      return { liquidity, stock, crypto, pension, total };
+    };
+
+    const latestTotals = calculateTotals(latest);
+    const prevTotals = calculateTotals(previous);
+
+    const calculateTrend = (current: number, prev: number) => {
+      if (!prev || prev === 0) return 0;
+      return ((current - prev) / prev) * 100;
+    };
+
+    const assetClasses = [
+      { name: 'Liquidity', current: latestTotals.liquidity, prev: prevTotals.liquidity },
+      { name: 'Stock', current: latestTotals.stock, prev: prevTotals.stock },
+      { name: 'Crypto', current: latestTotals.crypto, prev: prevTotals.crypto },
+      { name: 'Fondo Pensione', current: latestTotals.pension, prev: prevTotals.pension },
     ];
-    
-    return NextResponse.json({ summary, totalValue: totalPortfolioValue });
+
+    const summary = assetClasses.map(asset => ({
+      assetClass: asset.name,
+      totalQuantity: asset.current,
+      allocation: latestTotals.total > 0 ? (asset.current / latestTotals.total) * 100 : 0,
+      trend: calculateTrend(asset.current, asset.prev) // Aggiungiamo il trend
+    }));
+
+    return NextResponse.json({ 
+      summary, 
+      totalValue: latestTotals.total,
+      totalTrend: calculateTrend(latestTotals.total, prevTotals.total)
+    });
   } catch (error) {
-    console.error('Error calculating portfolio summary:', error);
-    return NextResponse.json({ error: 'Failed to calculate summary' }, { status: 500 });
+    console.error('Error calculating summary:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
