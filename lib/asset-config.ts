@@ -1,31 +1,5 @@
 // lib/asset-config.ts
 
-/**
- * Asset price configuration
- * Update these values regularly or consider fetching from an API
- * Last updated: 2025-01-XX
- */
-export const ASSET_PRICES: Record<string, number> = {
-  // Stocks (price per share in EUR)
-  mwrd: 85.5,
-  smea: 32.2,
-  xmme: 40.1,
-  
-  // Crypto (price per unit in EUR)
-  eth: 2450.0,
-  sol: 110.0,
-  link: 14.5,
-  op: 2.1,
-  usdt: 1.0,
-  
-  // Bonds, liquidity, pension funds are stored directly in EUR
-  // so they don't need price multipliers
-};
-
-/**
- * Asset class groupings
- * Maps asset classes to their component fields in MonthlyPortfolio
- */
 export const ASSET_MAPPING = {
   Liquidity: ['ing', 'bbva', 'revolut', 'directa'],
   Stock: ['mwrd', 'smea', 'xmme'],
@@ -36,10 +10,116 @@ export const ASSET_MAPPING = {
 
 export type CategoryNames = keyof typeof ASSET_MAPPING;
 
+const ETF_SYMBOLS: Record<string, string> = {
+  mwrd: 'MWRD.PAR',
+  smea: 'SMEA.LON',
+  xmme: 'XMME.DEX'
+};
+
 /**
- * Color scheme for each asset class
- * Used in charts and visualizations
+ * Calcola la data target: ultimo del mese o ieri se il mese è quello corrente.
  */
+function getTargetDateStr(date: Date): string {
+  const target = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const finalDate = target > yesterday ? yesterday : target;
+  return finalDate.toISOString().split('T')[0];
+}
+
+/**
+ * Utility per attendere un determinato numero di millisecondi
+ */
+export const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+/**
+ * Fetch Prezzo ETF da AlphaVantage con gestione errori e ritardo opzionale
+ */
+/**
+ * Recupera il prezzo ETF da AlphaVantage con logica di lookback e correzione valuta
+ */
+export async function fetchEtfPrice(ticker: string, targetDate: Date): Promise<number> {
+  const symbol = ETF_SYMBOLS[ticker];
+  if (!symbol) return 0;
+
+  const apiKey = process.env.ALPHAVANTAGE_API_KEY;
+  const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(symbol)}&outputsize=compact&apikey=${apiKey}`;
+
+  try {
+    const res = await fetch(url);
+    const json = await res.json();
+
+    // Gestione limiti API o errori di sistema
+    if (json["Note"] || json["Error Message"]) {
+      console.warn(`AlphaVantage info per ${ticker}:`, json["Note"] || json["Error Message"]);
+      return 0;
+    }
+
+    const meta = json["Meta Data"];
+    const series = json["Time Series (Daily)"];
+
+    if (!meta || !series) {
+      console.error(`Dati non trovati per ${ticker}`);
+      return 0;
+    }
+
+    // 1. Determiniamo da dove iniziare a cercare
+    // Se il mese è quello attuale, usiamo "Last Refreshed", altrimenti l'ultimo del mese richiesto
+    const lastRefreshedStr = meta["3. Last Refreshed"];
+    const lastRefreshedDate = new Date(lastRefreshedStr);
+    const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+
+    let searchDate = lastDayOfMonth > lastRefreshedDate ? lastRefreshedDate : lastDayOfMonth;
+
+    // 2. Loop di ricerca (Lookback 7 giorni per mercati chiusi)
+    let price = 0;
+    for (let i = 0; i <= 7; i++) {
+      const dateKey = searchDate.toISOString().split('T')[0];
+      
+      if (series[dateKey]) {
+        price = parseFloat(series[dateKey]["4. close"]);
+        break; // Trovato! Esce dal ciclo
+      }
+      searchDate.setDate(searchDate.getDate() - 1);
+    }
+
+    // 3. Correzione SMEA (London Stock Exchange quota in pence/GBX invece di sterline/euro)
+    // Esempio: 8009 GBX -> 80.09 EUR
+    if (ticker === 'smea' && price > 1000) {
+      price = price / 100;
+    }
+
+    return price;
+
+  } catch (error) {
+    console.error(`Eccezione fetch ETF ${ticker}:`, error);
+    return 0;
+  }
+}
+
+/**
+ * Recupera il prezzo Crypto da CryptoCompare
+ */
+export async function fetchCryptoPrice(symbol: string, date: Date): Promise<number> {
+  if (symbol.toLowerCase() === 'usdt') return 0.90; // Prezzo fisso richiesto
+  
+  const dateStr = getTargetDateStr(date);
+  const timestamp = Math.floor(new Date(dateStr).getTime() / 1000);
+
+  try {
+    const apiKey = process.env.CRYPTOCOMPARE_API_KEY;
+    const res = await fetch(
+      `https://min-api.cryptocompare.com/data/pricehistorical?fsym=${symbol.toUpperCase()}&tsyms=EUR&ts=${timestamp}&api_key=${apiKey}`
+    );
+    const data = await res.json();
+    return data[symbol.toUpperCase()]?.["EUR"] || 0;
+  } catch (error) {
+    console.error(`Errore fetch Crypto ${symbol}:`, error);
+    return 0;
+  }
+}
+
 export const ASSET_CLASS_COLORS: Record<CategoryNames, string> = {
   'Liquidity': 'bg-blue-500',
   'Stock': 'bg-green-500',
@@ -48,37 +128,6 @@ export const ASSET_CLASS_COLORS: Record<CategoryNames, string> = {
   'Bond': 'bg-yellow-500'
 };
 
-/**
- * Helper function to get asset class for a given field
- */
-export function getAssetClassForField(field: string): CategoryNames | null {
-  // Usiamo Object.entries con un casting a unknown per iterare correttamente sulle chiavi
-  const entries = Object.entries(ASSET_MAPPING) as unknown as [CategoryNames, readonly string[]][];
-  
-  for (const [assetClass, fields] of entries) {
-    // Castiamo field a 'any' o 'string' all'interno di includes per bypassare il controllo sulle tuple readonly
-    if ((fields as readonly string[]).includes(field)) {
-      return assetClass;
-    }
-  }
-  return null;
-}
-
-/**
- * Helper to format currency values
- */
-export function formatCurrency(value: number, currency: string = 'EUR'): string {
-  return new Intl.NumberFormat('it-IT', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value);
-}
-
-/**
- * Helper to format percentage values
- */
-export function formatPercentage(value: number, decimals: number = 1): string {
-  return `${value > 0 ? '+' : ''}${value.toFixed(decimals)}%`;
+export function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value);
 }

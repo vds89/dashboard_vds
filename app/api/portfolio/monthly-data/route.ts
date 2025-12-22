@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { fetchCryptoPrice, fetchEtfPrice, delay } from '@/lib/asset-config';
 
 export async function GET() {
   try {
@@ -10,7 +11,7 @@ export async function GET() {
     });
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching monthly portfolio data:', error);
+    console.error('Error fetching data:', error);
     return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
   }
 }
@@ -19,75 +20,101 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     
-    // --- FIX DATA ---
-    // Creiamo una data basata sulla stringa ricevuta
+    // Normalizzazione data al 1° del mese UTC
     const tempDate = new Date(body.month);
-    // Forziamo il primo giorno del mese alle 00:00:00 in formato UTC
-    // Questo impedisce a Neon/Vercel di sottrarre ore e finire al giorno precedente
     const monthDate = new Date(Date.UTC(tempDate.getUTCFullYear(), tempDate.getUTCMonth(), 1, 0, 0, 0));
 
-    const result = await prisma.$transaction(async (tx) => {
-      // Prepariamo i dati numerici per evitare ripetizioni (DRY)
-      const numericData = {
-        fixedIncome: body.fixedIncome || 0,
-        variableIncome: body.variableIncome || 0,
-        fixedExpenses: body.fixedExpenses || 0,
-        variableExpenses: body.variableExpenses || 0,
-        ing: body.ing || 0,
-        bbva: body.bbva || 0,
-        revolut: body.revolut || 0,
-        directa: body.directa || 0,
-        mwrd: body.mwrd || 0,   
-        smea: body.smea || 0,
-        xmme: body.xmme || 0,
-        bond: body.bond || 0,
-        eth: body.eth || 0,
-        sol: body.sol || 0,
-        link: body.link || 0,
-        op: body.op || 0,
-        usdt: body.usdt || 0,
-        cometa: body.cometa || 0,
-      };
+    // 1. Recupero Crypto in parallelo (CryptoCompare ha limiti alti)
+    const [ethP, solP, linkP, opP] = await Promise.all([
+      fetchCryptoPrice('eth', monthDate),
+      fetchCryptoPrice('sol', monthDate),
+      fetchCryptoPrice('link', monthDate),
+      fetchCryptoPrice('op', monthDate),
+    ]);
 
-      // 1. Upsert dei dati mensili
-      const monthly = await tx.monthlyPortfolio.upsert({    
-        where: { month: monthDate },
-        create: {
-          month: monthDate,
-          ...numericData
-        },
-        update: {
-          ...numericData
-        }
-      });
+    // 2. Recupero ETF in sequenza con delay (AlphaVantage Free Limit: 5 per min)
+    const mwrdP = await fetchEtfPrice('mwrd', monthDate);
+    await delay(1500); // 1.5 secondi di pausa
     
-      // 2. AGGIORNAMENTO SUMMARY
-      const latest = await tx.monthlyPortfolio.findFirst({ orderBy: { month: 'desc' } });
-      
-      if (latest && latest.month.getTime() === monthDate.getTime()) {
-        // Calcolo Liquidity
-        const liquiditySum = (body.ing || 0) + (body.bbva || 0) + (body.revolut || 0) + (body.directa || 0);
-        
-        await tx.portfolioAssetClass.upsert({
-          where: { assetClass_ticker: { assetClass: 'Liquidity', ticker: 'TOTAL' } },
-          update: { quantity: 1, valueEUR: liquiditySum },
-          create: { assetClass: 'Liquidity', ticker: 'TOTAL', quantity: 1, valueEUR: liquiditySum }
-        });
+    const smeaP = await fetchEtfPrice('smea', monthDate);
+    await delay(1500); // 1.5 secondi di pausa
+    
+    const xmmeP = await fetchEtfPrice('xmme', monthDate);
 
-        // Esempio Crypto
-        await tx.portfolioAssetClass.upsert({
-          where: { assetClass_ticker: { assetClass: 'Crypto', ticker: 'USDT' } },
-          update: { quantity: body.usdt || 0, valueEUR: body.usdt || 0 },
-          create: { assetClass: 'Crypto', ticker: 'USDT', quantity: body.usdt || 0, valueEUR: body.usdt || 0 }
-        });
-      }
+    // Costruzione dell'oggetto dati per CREATE (include tutti i campi obbligatori)
+    const createData = {
+      month: monthDate,
+      fixedIncome: Number(body.fixedIncome) || 0,
+      variableIncome: Number(body.variableIncome) || 0,
+      fixedExpenses: Number(body.fixedExpenses) || 0,
+      variableExpenses: Number(body.variableExpenses) || 0,
+      ing: Number(body.ing) || 0,
+      bbva: Number(body.bbva) || 0,
+      revolut: Number(body.revolut) || 0,
+      directa: Number(body.directa) || 0,
+      mwrd: Number(body.mwrd) || 0,   
+      smea: Number(body.smea) || 0,
+      xmme: Number(body.xmme) || 0,
+      bond: Number(body.bond) || 0,
+      eth: Number(body.eth) || 0,
+      sol: Number(body.sol) || 0,
+      link: Number(body.link) || 0,
+      op: Number(body.op) || 0,
+      usdt: Number(body.usdt) || 0,
+      cometa: Number(body.cometa) || 0,
+      mwrdPrice: mwrdP || 0,
+      smeaPrice: smeaP || 0,
+      xmmePrice: xmmeP || 0,
+      ethPrice: ethP || 0,
+      solPrice: solP || 0,
+      linkPrice: linkP || 0,
+      opPrice: opP || 0,
+    };
 
-      return monthly;
+    // Costruzione dell'oggetto dati per UPDATE (esclude campi auto-gestiti)
+    const updateData = {
+      fixedIncome: Number(body.fixedIncome) || 0,
+      variableIncome: Number(body.variableIncome) || 0,
+      fixedExpenses: Number(body.fixedExpenses) || 0,
+      variableExpenses: Number(body.variableExpenses) || 0,
+      ing: Number(body.ing) || 0,
+      bbva: Number(body.bbva) || 0,
+      revolut: Number(body.revolut) || 0,
+      directa: Number(body.directa) || 0,
+      mwrd: Number(body.mwrd) || 0,   
+      smea: Number(body.smea) || 0,
+      xmme: Number(body.xmme) || 0,
+      bond: Number(body.bond) || 0,
+      eth: Number(body.eth) || 0,
+      sol: Number(body.sol) || 0,
+      link: Number(body.link) || 0,
+      op: Number(body.op) || 0,
+      usdt: Number(body.usdt) || 0,
+      cometa: Number(body.cometa) || 0,
+      mwrdPrice: mwrdP || 0,
+      smeaPrice: smeaP || 0,
+      xmmePrice: xmmeP || 0,
+      ethPrice: ethP || 0,
+      solPrice: solP || 0,
+      linkPrice: linkP || 0,
+      opPrice: opP || 0,
+    };
+
+    const result = await prisma.monthlyPortfolio.upsert({    
+      where: { month: monthDate },
+      create: createData,
+      update: updateData
     });
     
     return NextResponse.json(result);
   } catch (error) {
     console.error('Error saving data:', error);
-    return NextResponse.json({ error: 'Failed to save data' }, { status: 500 });
+    return NextResponse.json(
+      { 
+        error: 'Failed to save data', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      }, 
+      { status: 500 }
+    );
   }
 }

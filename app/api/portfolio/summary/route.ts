@@ -1,9 +1,10 @@
+// app/api/portfolio/summary/route.ts
+
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { MonthlyPortfolio } from '@prisma/client';
-import { ASSET_MAPPING, ASSET_PRICES, CategoryNames } from '@/lib/asset-config';
+import { ASSET_MAPPING, CategoryNames } from '@/lib/asset-config';
 
-// Definiamo il tipo dei totali includendo il totale globale
 type CategoryTotals = Record<CategoryNames, number> & { total: number };
 
 interface AssetSummary {
@@ -42,7 +43,8 @@ export async function GET(request: Request) {
     const monthlyData = await prisma.monthlyPortfolio.findMany({
       where: Object.keys(dateFilter).length > 0 ? { month: dateFilter } : {},
       orderBy: { month: 'desc' },
-      take: range === 'all' ? 2 : undefined,
+      // Ne prendiamo sempre 2 per calcolare il trend rispetto al mese precedente
+      take: 2, 
     });
     
     if (monthlyData.length === 0) {
@@ -57,6 +59,9 @@ export async function GET(request: Request) {
     const latest = monthlyData[0];
     const previous = monthlyData.length > 1 ? monthlyData[1] : null;
 
+    /**
+     * Calcola i totali basandosi sui prezzi salvati nel record del database
+     */
     const calculateTotals = (data: MonthlyPortfolio | null | undefined): CategoryTotals => {
       const categoryTotals: CategoryTotals = {
         Liquidity: 0,
@@ -69,23 +74,29 @@ export async function GET(request: Request) {
 
       if (!data) return categoryTotals;
 
-      // FIX: Cast doppio per gestire il readonly di ASSET_MAPPING senza 'any'
       const entries = Object.entries(ASSET_MAPPING) as unknown as [CategoryNames, readonly string[]][];
       
       entries.forEach(([category, fields]) => {
         fields.forEach((field) => {
-          const val = data[field as keyof MonthlyPortfolio];
-          const numericVal = typeof val === 'number' ? val : 0;
+          const quantity = (data[field as keyof MonthlyPortfolio] as number) || 0;
           
-          if (ASSET_PRICES[field]) {
-            categoryTotals[category] += numericVal * ASSET_PRICES[field];
+          // Cerchiamo se esiste un prezzo salvato nel database per questo asset (es. mwrdPrice, ethPrice)
+          const priceKey = `${field}Price` as keyof MonthlyPortfolio;
+          const savedPrice = data[priceKey] as number | null;
+
+          if (savedPrice !== null && savedPrice !== undefined) {
+            // Se abbiamo un prezzo nel DB (ETF o Crypto), usiamo quello
+            categoryTotals[category] += quantity * savedPrice;
+          } else if (field === 'usdt') {
+            // Gestione speciale USDT (prezzo fisso 0.90 come richiesto)
+            categoryTotals[category] += quantity * 0.90;
           } else {
-            categoryTotals[category] += numericVal;
+            // Per Liquidity, Bond e Fondo Pensione la quantità è già in EUR
+            categoryTotals[category] += quantity;
           }
         });
       });
 
-      // Calcolo totale usando l'array di chiavi tipizzato
       const categories: CategoryNames[] = ['Liquidity', 'Stock', 'Bond', 'Fondo Pensione', 'Crypto'];
       categoryTotals.total = categories.reduce((acc, cat) => acc + categoryTotals[cat], 0);
       
@@ -96,7 +107,7 @@ export async function GET(request: Request) {
     const prevTotals = calculateTotals(previous);
 
     const calculateTrend = (current: number, prev: number): number => {
-      if (!prev || prev === 0) return 0; // Evita +100% fittizi al primo mese
+      if (!prev || prev === 0) return 0;
       return ((current - prev) / prev) * 100;
     };
 
