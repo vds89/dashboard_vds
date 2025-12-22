@@ -81,23 +81,31 @@ export function FinanceEntryForm() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = async () => {
-    if (!formData.month) {
-      setMessage("Please select a month");
-      return;
-    }
+const handleSubmit = async () => {
+  if (!formData.month) {
+    setMessage("Please select a month");
+    return;
+  }
 
-    setLoading(true);
-    setMessage("");
-    
-    try {
-      const res = await fetch("/api/portfolio/monthly-data", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          month: formData.month.toISOString(),
+  setLoading(true);
+  try {
+    // 1. Estraiamo anno e mese (0-indexed)
+    const year = formData.month.getFullYear();
+    const month = formData.month.getMonth() + 1; // +1 perché i mesi in JS vanno da 0 a 11
+
+    // 2. Creiamo una stringa ISO "pura" per il primo del mese a mezzogiorno
+    // Usiamo le 12:00 invece delle 00:00 per evitare che piccoli scarti di fuso orario
+    // riportino la data al giorno prima.
+    const monthString = `${year}-${month.toString().padStart(2, '0')}-01T12:00:00.000Z`;
+
+    const res = await fetch("/api/portfolio/monthly-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+          // Inviamo la data formattata come stringa YYYY-MM-DD
+          // o usiamo ISO string dopo aver azzerato i minuti
+          ...formData, // invia gli altri campi
+          month: monthString, // Questa stringa è univoca
           fixedIncome: parseFloat(formData.fixedIncome) || 0,
           variableIncome: parseFloat(formData.variableIncome) || 0,
           fixedExpenses: parseFloat(formData.fixedExpenses) || 0,

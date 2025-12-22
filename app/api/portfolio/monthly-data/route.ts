@@ -18,63 +18,54 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const monthDate = new Date(body.month);
-    monthDate.setDate(1);
-    monthDate.setHours(0, 0, 0, 0);
     
-    // 1. Eseguiamo tutto in una transazione per sicurezza
+    // --- FIX DATA ---
+    // Creiamo una data basata sulla stringa ricevuta
+    const tempDate = new Date(body.month);
+    // Forziamo il primo giorno del mese alle 00:00:00 in formato UTC
+    // Questo impedisce a Neon/Vercel di sottrarre ore e finire al giorno precedente
+    const monthDate = new Date(Date.UTC(tempDate.getUTCFullYear(), tempDate.getUTCMonth(), 1, 0, 0, 0));
+
     const result = await prisma.$transaction(async (tx) => {
-      // Upsert dei dati mensili
-        const monthly = await tx.monthlyPortfolio.upsert({    
-            where: { month: monthDate },
-            create: {
-                month: monthDate,
-                fixedIncome: body.fixedIncome || 0,
-                variableIncome: body.variableIncome || 0,
-                fixedExpenses: body.fixedExpenses || 0,
-                variableExpenses: body.variableExpenses || 0,
-                ing: body.ing || 0,
-                bbva: body.bbva || 0,
-                revolut: body.revolut || 0,
-                directa: body.directa || 0,
-                mwrd: body.mwrd || 0,   
-                smea: body.smea || 0,
-                xmme: body.xmme || 0,
-                bond: body.bond || 0,
-                eth: body.eth || 0,
-                sol: body.sol || 0,
-                link: body.link || 0,
-                op: body.op || 0,
-                usdt: body.usdt || 0,
-                cometa: body.cometa || 0,
-            },
-            update: {
-                fixedIncome: body.fixedIncome || 0,
-                variableIncome: body.variableIncome || 0,
-                fixedExpenses: body.fixedExpenses || 0,
-                variableExpenses: body.variableExpenses || 0,
-                ing: body.ing || 0,
-                bbva: body.bbva || 0,
-                revolut: body.revolut || 0,
-                directa: body.directa || 0,
-                mwrd: body.mwrd || 0,
-                smea: body.smea || 0,
-                xmme: body.xmme || 0,
-                bond: body.bond || 0,
-                eth: body.eth || 0,
-                sol: body.sol || 0,
-                link: body.link || 0,
-                op: body.op || 0,
-                usdt: body.usdt || 0,
-                cometa: body.cometa || 0,
-            }
-        });
+      // Prepariamo i dati numerici per evitare ripetizioni (DRY)
+      const numericData = {
+        fixedIncome: body.fixedIncome || 0,
+        variableIncome: body.variableIncome || 0,
+        fixedExpenses: body.fixedExpenses || 0,
+        variableExpenses: body.variableExpenses || 0,
+        ing: body.ing || 0,
+        bbva: body.bbva || 0,
+        revolut: body.revolut || 0,
+        directa: body.directa || 0,
+        mwrd: body.mwrd || 0,   
+        smea: body.smea || 0,
+        xmme: body.xmme || 0,
+        bond: body.bond || 0,
+        eth: body.eth || 0,
+        sol: body.sol || 0,
+        link: body.link || 0,
+        op: body.op || 0,
+        usdt: body.usdt || 0,
+        cometa: body.cometa || 0,
+      };
+
+      // 1. Upsert dei dati mensili
+      const monthly = await tx.monthlyPortfolio.upsert({    
+        where: { month: monthDate },
+        create: {
+          month: monthDate,
+          ...numericData
+        },
+        update: {
+          ...numericData
+        }
+      });
     
-// 2. AGGIORNAMENTO SUMMARY: Se è l'ultimo mese inserito, aggiorna PortfolioAssetClass
+      // 2. AGGIORNAMENTO SUMMARY
       const latest = await tx.monthlyPortfolio.findFirst({ orderBy: { month: 'desc' } });
       
       if (latest && latest.month.getTime() === monthDate.getTime()) {
-        // Esempio per la Liquidity: somma i conti
+        // Calcolo Liquidity
         const liquiditySum = (body.ing || 0) + (body.bbva || 0) + (body.revolut || 0) + (body.directa || 0);
         
         await tx.portfolioAssetClass.upsert({
@@ -83,7 +74,7 @@ export async function POST(request: Request) {
           create: { assetClass: 'Liquidity', ticker: 'TOTAL', quantity: 1, valueEUR: liquiditySum }
         });
 
-        // Ripeti per Crypto (esempio semplificato usando USDT)
+        // Esempio Crypto
         await tx.portfolioAssetClass.upsert({
           where: { assetClass_ticker: { assetClass: 'Crypto', ticker: 'USDT' } },
           update: { quantity: body.usdt || 0, valueEUR: body.usdt || 0 },
