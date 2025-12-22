@@ -50,7 +50,6 @@ export async function fetchEtfPrice(ticker: string, targetDate: Date): Promise<n
     const res = await fetch(url);
     const json = await res.json();
 
-    // Gestione limiti API o errori di sistema
     if (json["Note"] || json["Error Message"]) {
       console.warn(`AlphaVantage info per ${ticker}:`, json["Note"] || json["Error Message"]);
       return 0;
@@ -64,28 +63,29 @@ export async function fetchEtfPrice(ticker: string, targetDate: Date): Promise<n
       return 0;
     }
 
-    // 1. Determiniamo da dove iniziare a cercare
-    // Se il mese è quello attuale, usiamo "Last Refreshed", altrimenti l'ultimo del mese richiesto
     const lastRefreshedStr = meta["3. Last Refreshed"];
     const lastRefreshedDate = new Date(lastRefreshedStr);
     const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
 
-    let searchDate = lastDayOfMonth > lastRefreshedDate ? lastRefreshedDate : lastDayOfMonth;
+    // 1. Definiamo la data di partenza come CONST
+    const startDate = lastDayOfMonth > lastRefreshedDate ? lastRefreshedDate : lastDayOfMonth;
 
-    // 2. Loop di ricerca (Lookback 7 giorni per mercati chiusi)
     let price = 0;
+    
+    // 2. Nel loop creiamo una nuova istanza ogni volta basata sull'indice i
+    // Questo evita di mutare searchDate e risolve l'errore di ESLint
     for (let i = 0; i <= 7; i++) {
+      const searchDate = new Date(startDate);
+      searchDate.setDate(searchDate.getDate() - i); 
+      
       const dateKey = searchDate.toISOString().split('T')[0];
       
       if (series[dateKey]) {
         price = parseFloat(series[dateKey]["4. close"]);
-        break; // Trovato! Esce dal ciclo
+        break; 
       }
-      searchDate.setDate(searchDate.getDate() - 1);
     }
 
-    // 3. Correzione SMEA (London Stock Exchange quota in pence/GBX invece di sterline/euro)
-    // Esempio: 8009 GBX -> 80.09 EUR
     if (ticker === 'smea' && price > 1000) {
       price = price / 100;
     }
