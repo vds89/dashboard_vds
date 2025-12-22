@@ -1,92 +1,106 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { MonthlyPortfolio } from '@prisma/client';
+import { ASSET_MAPPING, ASSET_PRICES, CategoryNames } from '@/lib/asset-config';
 
-// 1. Mappa delle categorie
-const ASSET_MAPPING = {
-  Liquidity: ['ing', 'bbva', 'revolut', 'directa'],
-  Stock: ['mwrd', 'smea', 'xmme'],
-  Bond: ['bond'],
-  'Fondo Pensione': ['cometa'],
-  Crypto: ['eth', 'sol', 'link', 'op', 'usdt']
-} as const; // 'as const' rende le chiavi fisse e non semplici stringhe
-
-// Definizione dei tipi basata sulla mappa sopra
-type CategoryNames = keyof typeof ASSET_MAPPING;
+// Definiamo il tipo dei totali includendo il totale globale
 type CategoryTotals = Record<CategoryNames, number> & { total: number };
 
-// 2. Prezzi stimati
-const ASSET_PRICES: Record<string, number> = {
-  mwrd: 85.5,
-  smea: 32.2,
-  xmme: 40.1,
-  eth: 2450.0,
-  sol: 110.0,
-  link: 14.5,
-  op: 2.1,
-  usdt: 1.0 
-};
+interface AssetSummary {
+  assetClass: string;
+  totalQuantity: number;
+  allocation: number;
+  trend: number;
+}
 
-export async function GET() {
+interface SummaryResponse {
+  summary: AssetSummary[];
+  totalValue: number;
+  totalTrend: number;
+  lastUpdated: Date | null;
+}
+
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const range = searchParams.get('range') || 'all';
+    
+    let dateFilter = {};
+    const now = new Date();
+    
+    if (range === '1y') {
+      const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+      dateFilter = { gte: oneYearAgo };
+    } else if (range === '6m') {
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+      dateFilter = { gte: sixMonthsAgo };
+    } else if (range === '3m') {
+      const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+      dateFilter = { gte: threeMonthsAgo };
+    }
+    
     const monthlyData = await prisma.monthlyPortfolio.findMany({
+      where: Object.keys(dateFilter).length > 0 ? { month: dateFilter } : {},
       orderBy: { month: 'desc' },
-      take: 2
+      take: range === 'all' ? 2 : undefined,
     });
     
     if (monthlyData.length === 0) {
-      return NextResponse.json({ summary: [], totalValue: 0, totalTrend: 0 });
+      return NextResponse.json({ 
+        summary: [], 
+        totalValue: 0, 
+        totalTrend: 0,
+        lastUpdated: null
+      } as SummaryResponse);
     }
 
     const latest = monthlyData[0];
-    const previous = monthlyData[1];
+    const previous = monthlyData.length > 1 ? monthlyData[1] : null;
 
-  const calculateTotals = (data: MonthlyPortfolio | null | undefined): CategoryTotals => {
-    const categoryTotals: CategoryTotals = {
-      Liquidity: 0,
-      Stock: 0,
-      Bond: 0,
-      'Fondo Pensione': 0,
-      Crypto: 0,
-      total: 0
-    };
+    const calculateTotals = (data: MonthlyPortfolio | null | undefined): CategoryTotals => {
+      const categoryTotals: CategoryTotals = {
+        Liquidity: 0,
+        Stock: 0,
+        Bond: 0,
+        'Fondo Pensione': 0,
+        Crypto: 0,
+        total: 0
+      };
 
-    if (!data) return categoryTotals;
+      if (!data) return categoryTotals;
 
-    // 1. Convertiamo l'oggetto in unknown e poi nel tipo target per gestire il readonly e le chiavi
-    const entries = Object.entries(ASSET_MAPPING) as unknown as [CategoryNames, readonly string[]][];
-
-    entries.forEach(([category, fields]) => {
-      fields.forEach((field) => {
-        // Accesso sicuro alle proprietà del modello Prisma
-        const val = data[field as keyof MonthlyPortfolio];
-        const numericVal = typeof val === 'number' ? val : 0;
-        
-        if (ASSET_PRICES[field]) {
-          categoryTotals[category] += numericVal * ASSET_PRICES[field];
-        } else {
-          categoryTotals[category] += numericVal;
-        }
+      // FIX: Cast doppio per gestire il readonly di ASSET_MAPPING senza 'any'
+      const entries = Object.entries(ASSET_MAPPING) as unknown as [CategoryNames, readonly string[]][];
+      
+      entries.forEach(([category, fields]) => {
+        fields.forEach((field) => {
+          const val = data[field as keyof MonthlyPortfolio];
+          const numericVal = typeof val === 'number' ? val : 0;
+          
+          if (ASSET_PRICES[field]) {
+            categoryTotals[category] += numericVal * ASSET_PRICES[field];
+          } else {
+            categoryTotals[category] += numericVal;
+          }
+        });
       });
-    });
 
-    // 2. Calcolo del totale (senza usare 'any')
-    // Usiamo un array esplicito delle chiavi per evitare di sommare il campo 'total' stesso
-    const categories: CategoryNames[] = ['Liquidity', 'Stock', 'Bond', 'Fondo Pensione', 'Crypto'];
-    categoryTotals.total = categories.reduce((acc, cat) => acc + categoryTotals[cat], 0);
-    
-    return categoryTotals;
-  };
+      // Calcolo totale usando l'array di chiavi tipizzato
+      const categories: CategoryNames[] = ['Liquidity', 'Stock', 'Bond', 'Fondo Pensione', 'Crypto'];
+      categoryTotals.total = categories.reduce((acc, cat) => acc + categoryTotals[cat], 0);
+      
+      return categoryTotals;
+    };
 
     const latestTotals = calculateTotals(latest);
     const prevTotals = calculateTotals(previous);
 
-    const calculateTrend = (current: number, prev: number) => {
-      if (!prev || prev === 0) return 0;
+    const calculateTrend = (current: number, prev: number): number => {
+      if (!prev || prev === 0) return 0; // Evita +100% fittizi al primo mese
       return ((current - prev) / prev) * 100;
     };
 
-    const summary = (Object.keys(ASSET_MAPPING) as CategoryNames[]).map((catName) => {
+    const summary: AssetSummary[] = (Object.keys(ASSET_MAPPING) as CategoryNames[]).map((catName) => {
       const currentVal = latestTotals[catName];
       const prevVal = prevTotals[catName];
       
@@ -98,14 +112,20 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ 
+    const response: SummaryResponse = { 
       summary, 
       totalValue: latestTotals.total,
-      totalTrend: calculateTrend(latestTotals.total, prevTotals.total)
-    });
+      totalTrend: calculateTrend(latestTotals.total, prevTotals.total),
+      lastUpdated: latest.month
+    };
+
+    return NextResponse.json(response);
 
   } catch (error) {
-    console.error('Error calculating summary:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error('Error calculating portfolio summary:', error);
+    return NextResponse.json(
+      { error: 'Internal Server Error' }, 
+      { status: 500 }
+    );
   }
 }
