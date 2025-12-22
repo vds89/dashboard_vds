@@ -1,6 +1,30 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { MonthlyPortfolio } from '@prisma/client'; // Importiamo il tipo generato da Prisma
+import { MonthlyPortfolio } from '@prisma/client';
+
+// 1. Mappa delle categorie
+const ASSET_MAPPING = {
+  Liquidity: ['ing', 'bbva', 'revolut', 'directa'],
+  Stock: ['mwrd', 'smea', 'xmme'],
+  Bond: ['bond'],
+  'Fondo Pensione': ['cometa'],
+  Crypto: ['eth', 'sol', 'link', 'op', 'usdt']
+};
+
+// Definiamo un tipo per i totali delle categorie per aiutare TS
+type CategoryTotals = Record<keyof typeof ASSET_MAPPING, number> & { total: number };
+
+// 2. Prezzi stimati
+const ASSET_PRICES: Record<string, number> = {
+  mwrd: 85.5,
+  smea: 32.2,
+  xmme: 40.1,
+  eth: 2450.0,
+  sol: 110.0,
+  link: 14.5,
+  op: 2.1,
+  usdt: 1.0 
+};
 
 export async function GET() {
   try {
@@ -16,22 +40,34 @@ export async function GET() {
     const latest = monthlyData[0];
     const previous = monthlyData[1];
 
-    // Definiamo il tipo esatto invece di 'any'
-    const calculateTotals = (data: MonthlyPortfolio | null | undefined) => {
-      if (!data) return { liquidity: 0, stock: 0, crypto: 0, pension: 0, total: 0 };
+    const calculateTotals = (data: MonthlyPortfolio | null | undefined): CategoryTotals => {
+      const categoryTotals: any = {
+        Liquidity: 0,
+        Stock: 0,
+        Bond: 0,
+        'Fondo Pensione': 0,
+        Crypto: 0
+      };
+
+      if (!data) return { ...categoryTotals, total: 0 };
+
+      Object.entries(ASSET_MAPPING).forEach(([category, fields]) => {
+        fields.forEach((field) => {
+          const val = data[field as keyof MonthlyPortfolio];
+          const numericVal = typeof val === 'number' ? val : 0;
+          
+          if (ASSET_PRICES[field]) {
+            categoryTotals[category] += numericVal * ASSET_PRICES[field];
+          } else {
+            categoryTotals[category] += numericVal;
+          }
+        });
+      });
+
+      const totalGlobal = Object.values(categoryTotals).reduce((a: any, b: any) => a + b, 0);
+      categoryTotals.total = totalGlobal;
       
-      const liquidity = data.ing + data.bbva + data.revolut + data.directa;
-      
-      // Calcolo Stocks (Quantità * Prezzi stimati + Bond in EUR)
-      const stock = data.bond + (data.mwrd * 85) + (data.smea * 30) + (data.xmme * 40);
-      
-      // Calcolo Crypto (Quantità * Prezzi stimati)
-      const crypto = data.usdt + (data.eth * 2500) + (data.sol * 100) + (data.link * 15) + (data.op * 2);
-      
-      const pension = data.cometa;
-      const total = liquidity + stock + crypto + pension;
-      
-      return { liquidity, stock, crypto, pension, total };
+      return categoryTotals as CategoryTotals;
     };
 
     const latestTotals = calculateTotals(latest);
@@ -42,27 +78,28 @@ export async function GET() {
       return ((current - prev) / prev) * 100;
     };
 
-    const assetClasses = [
-      { name: 'Liquidity', current: latestTotals.liquidity, prev: prevTotals.liquidity },
-      { name: 'Stock', current: latestTotals.stock, prev: prevTotals.stock },
-      { name: 'Crypto', current: latestTotals.crypto, prev: prevTotals.crypto },
-      { name: 'Fondo Pensione', current: latestTotals.pension, prev: prevTotals.pension },
-    ];
-
-    const summary = assetClasses.map(asset => ({
-      assetClass: asset.name,
-      totalQuantity: asset.current,
-      allocation: latestTotals.total > 0 ? (asset.current / latestTotals.total) * 100 : 0,
-      trend: calculateTrend(asset.current, asset.prev)
-    }));
+    const summary = Object.keys(ASSET_MAPPING).map((catName) => {
+      // Usiamo il casting per dire a TS che catName è una chiave valida di CategoryTotals
+      const key = catName as keyof typeof ASSET_MAPPING;
+      const currentVal = latestTotals[key] || 0;
+      const prevVal = prevTotals[key] || 0;
+      
+      return {
+        assetClass: catName,
+        totalQuantity: currentVal,
+        allocation: latestTotals.total > 0 ? (currentVal / latestTotals.total) * 100 : 0,
+        trend: calculateTrend(currentVal, prevVal)
+      };
+    });
 
     return NextResponse.json({ 
       summary, 
       totalValue: latestTotals.total,
       totalTrend: calculateTrend(latestTotals.total, prevTotals.total)
     });
+
   } catch (error) {
-    console.error('Error calculating summary:', error);
-    return NextResponse.json({ error: 'Failed to calculate summary' }, { status: 500 });
+    console.error('Error:', error);
+    return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }
 }
