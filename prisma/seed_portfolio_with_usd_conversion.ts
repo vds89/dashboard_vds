@@ -15,17 +15,21 @@ const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-const num = (value?: string) => Number(value ?? 0);
+// Helper per pulire i numeri
+const num = (value?: string | number) => {
+  if (typeof value === 'number') return value;
+  if (!value || value.trim() === '' || value === 'NaN') return 0;
+  return Number(value.replace(',', '.'));
+};
 
 interface HistoricalPrice {
   date: string;
   symbol: string;
-  price: number;
+  price: string; // Il parser CSV legge inizialmente come stringa
 }
 
 interface MonthlyPortfolioCSV {
   month: string;
-  // ... (altri campi come prima)
   fixedIncome?: string;
   variableIncome?: string;
   fixedExpenses?: string;
@@ -54,30 +58,28 @@ interface MonthlyPortfolioCSV {
 }
 
 /**
- * Helper per creare una data UTC pura ed evitare shift di fuso orario.
+ * Normalizza qualsiasi stringa data al 1° del mese in UTC Puro
  */
-function parseToUTCDate(dateStr: string): Date {
-  // Se è formato ISO YYYY-MM-DD
-  if (dateStr.includes('-')) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(Date.UTC(y, m - 1, d));
+function parseToNativeDate(dateStr: string): Date {
+  let date: Date;
+  // Gestisce "Jan 2023" o "2023-01-01"
+  date = new Date(dateStr);
+  // Se fallisce (es. formato 1/1/2023), proviamo split manuale
+  if (isNaN(date.getTime()) && dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    date = new Date(Number(parts[2]), Number(parts[0]) - 1, 1);
   }
-  // Se è formato M/D/YYYY (tipico del CSV)
-  const parts = dateStr.split('/');
-  if (parts.length === 3) {
-    const month = parseInt(parts[0], 10) - 1;
-    const day = parseInt(parts[1], 10);
-    const year = parseInt(parts[2], 10);
-    return new Date(Date.UTC(year, month, day));
-  }
-  return new Date(dateStr);
+  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), 1));
 }
 
-// Parse historical crypto prices (in USD)
+/**
+ * Carica i prezzi storici USD dal file TXT/CSV
+ */
 function parseHistoricalPrices(): Map<string, number> {
-  const filePath = path.join(__dirname, '..', 'prisma/crypto_seeds_grouped_2015_2025.txt');
+  const filePath = path.join(process.cwd(), 'prisma/crypto_seeds_grouped_2015_2025.txt');
+  if (!fs.existsSync(filePath)) return new Map();
+
   const fileContent = fs.readFileSync(filePath, 'utf-8');
-  
   const records = parse(fileContent, {
     columns: true,
     skip_empty_lines: true,
@@ -85,36 +87,26 @@ function parseHistoricalPrices(): Map<string, number> {
   }) as HistoricalPrice[];
 
   const priceMap = new Map<string, number>();
-  
   records.forEach(record => {
-    const date = parseToUTCDate(record.date);
-    // Usiamo getUTC per coerenza assoluta
-    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${record.symbol.toUpperCase()}`;
-    priceMap.set(key, Number(record.price));
+    const d = new Date(record.date);
+    const key = `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${record.symbol.toUpperCase()}`;
+    priceMap.set(key, num(record.price));
   });
-
   return priceMap;
 }
 
-// Get USD price using UTC key
-function getHistoricalUsdPrice(
-  priceMap: Map<string, number>, 
-  date: Date, 
-  symbol: string
-): number {
-  const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${symbol.toUpperCase()}`;
+function getHistoricalUsdPrice(priceMap: Map<string, number>, date: Date, symbol: string): number {
+  const key = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${symbol.toUpperCase()}`;
   return priceMap.get(key) || 0;
 }
 
 async function main() {
-  console.log('🚀 Starting portfolio seeding with UTC protection...');
+  console.log('🚀 Avvio Seeding con conversione USD -> EUR e protezione UTC...');
 
   const historicalPricesUsd = parseHistoricalPrices();
-  console.log(`📊 Loaded ${historicalPricesUsd.size} historical USD price records`);
-
-  const portfolioPath = path.join(__dirname, 'MonthlyPortfolioData.csv');
-  const portfolioContent = fs.readFileSync(portfolioPath, 'utf-8');
-  const records = parse(portfolioContent, {
+  const portfolioPath = path.join(process.cwd(), 'prisma/vds_portfolio_2023_2025.csv');
+  
+  const records = parse(fs.readFileSync(portfolioPath, 'utf-8'), {
     columns: true,
     skip_empty_lines: true,
     trim: true,
@@ -123,104 +115,74 @@ async function main() {
   const exchangeRateCache = new Map<string, number>();
 
   for (const record of records) {
-    // Usiamo il parser UTC per la data del mese del portfolio
-    const monthDate = parseToUTCDate(record.month);
-    const dateKey = monthDate.toISOString().split('T')[0];
+    const monthDate = parseToNativeDate(record.month);
+    const dateISO = monthDate.toISOString().split('T')[0];
     
-    let exchangeRate = exchangeRateCache.get(dateKey);
-    if (!exchangeRate) {
-      console.log(`💱 Fetching USD/EUR rate for ${dateKey}...`);
-      exchangeRate = await getUsdToEurRate(monthDate);
-      exchangeRateCache.set(dateKey, exchangeRate);
-      await delay(100);
+    // 1. Gestione Tasso di Cambio con Cache
+    let rate = exchangeRateCache.get(dateISO);
+    if (!rate) {
+      rate = await getUsdToEurRate(monthDate);
+      exchangeRateCache.set(dateISO, rate);
+      await delay(50); // Rispetto dei limiti API
     }
 
-    // Lookup prezzi usando la logica UTC corretta
+    // 2. Lookup Prezzi USD e conversione in EUR
+    // Se il CSV ha già un prezzo lo usa, altrimenti pesca dal file storico
     const ethUsd = num(record.ethPrice) || getHistoricalUsdPrice(historicalPricesUsd, monthDate, 'ETH');
     const solUsd = num(record.solPrice) || getHistoricalUsdPrice(historicalPricesUsd, monthDate, 'SOL');
     const linkUsd = num(record.linkPrice) || getHistoricalUsdPrice(historicalPricesUsd, monthDate, 'LINK');
     const opUsd = num(record.opPrice) || getHistoricalUsdPrice(historicalPricesUsd, monthDate, 'OP');
 
-    const ethEur = convertUsdToEur(ethUsd, exchangeRate);
-    const solEur = convertUsdToEur(solUsd, exchangeRate);
-    const linkEur = convertUsdToEur(linkUsd, exchangeRate);
-    const opEur = convertUsdToEur(opUsd, exchangeRate);
+    const dataPayload = {
+      fixedIncome: num(record.fixedIncome),
+      variableIncome: num(record.variableIncome),
+      fixedExpenses: num(record.fixedExpenses),
+      variableExpenses: num(record.variableExpenses),
+      ing: num(record.ing),
+      bbva: num(record.bbva),
+      revolut: num(record.revolut),
+      directa: num(record.directa),
+      mwrd: num(record.mwrd),
+      smea: num(record.smea),
+      xmme: num(record.xmme),
+      bond: num(record.bond),
+      cometa: num(record.cometa),
+      eth: num(record.eth),
+      sol: num(record.sol),
+      link: num(record.link),
+      op: num(record.op),
+      usdt: num(record.usdt),
+      // Prezzi convertiti in EUR
+      ethPrice: convertUsdToEur(ethUsd, rate),
+      solPrice: convertUsdToEur(solUsd, rate),
+      linkPrice: convertUsdToEur(linkUsd, rate),
+      opPrice: convertUsdToEur(opUsd, rate),
+      // ETF prezzi (già in EUR nel CSV)
+      mwrdPrice: num(record.mwrdPrice),
+      smeaPrice: num(record.smeaPrice),
+      xmmePrice: num(record.xmmePrice),
+    };
 
     try {
       await prisma.monthlyPortfolio.upsert({
         where: { month: monthDate },
-        update: {
-          fixedIncome: num(record.fixedIncome),
-          variableIncome: num(record.variableIncome),
-          fixedExpenses: num(record.fixedExpenses),
-          variableExpenses: num(record.variableExpenses),
-          ing: num(record.ing),
-          bbva: num(record.bbva),
-          revolut: num(record.revolut),
-          directa: num(record.directa),
-          mwrd: num(record.mwrd),
-          smea: num(record.smea),
-          xmme: num(record.xmme),
-          bond: num(record.bond),
-          eth: num(record.eth),
-          sol: num(record.sol),
-          link: num(record.link),
-          op: num(record.op),
-          usdt: num(record.usdt),
-          cometa: num(record.cometa),
-          ethPrice: ethEur,
-          solPrice: solEur,
-          linkPrice: linkEur,
-          opPrice: opEur,
-          mwrdPrice: num(record.mwrdPrice),
-          smeaPrice: num(record.smeaPrice),
-          xmmePrice: num(record.xmmePrice),
-        },
+        update: dataPayload,
         create: {
           month: monthDate,
-          // ... (stessi campi di update)
-          fixedIncome: num(record.fixedIncome),
-          variableIncome: num(record.variableIncome),
-          fixedExpenses: num(record.fixedExpenses),
-          variableExpenses: num(record.variableExpenses),
-          ing: num(record.ing),
-          bbva: num(record.bbva),
-          revolut: num(record.revolut),
-          directa: num(record.directa),
-          mwrd: num(record.mwrd),
-          smea: num(record.smea),
-          xmme: num(record.xmme),
-          bond: num(record.bond),
-          eth: num(record.eth),
-          sol: num(record.sol),
-          link: num(record.link),
-          op: num(record.op),
-          usdt: num(record.usdt),
-          cometa: num(record.cometa),
-          ethPrice: ethEur,
-          solPrice: solEur,
-          linkPrice: linkEur,
-          opPrice: opEur,
-          mwrdPrice: num(record.mwrdPrice),
-          smeaPrice: num(record.smeaPrice),
-          xmmePrice: num(record.xmmePrice),
+          ...dataPayload,
         },
       });
-
-      console.log(`✅ ${dateKey} | ETH: $${ethUsd.toFixed(2)} → €${ethEur.toFixed(2)}`);
+      console.log(`✅ ${dateISO} | Cambio: ${rate.toFixed(4)} | ETH: €${dataPayload.ethPrice.toFixed(2)}`);
     } catch (error) {
-      console.error(`❌ Error for month ${record.month}`, error);
+      console.error(`❌ Errore record ${record.month}:`, error);
     }
   }
 
-  console.log(`\n🎉 Seeding completed!`);
+  console.log('\n🎉 Sincronizzazione completata!');
 }
 
 main()
-  .catch((e) => {
-    console.error('❌ Error during seeding:', e);
-    process.exit(1);
-  })
+  .catch((e) => { console.error(e); process.exit(1); })
   .finally(async () => {
     await prisma.$disconnect();
     await pool.end();

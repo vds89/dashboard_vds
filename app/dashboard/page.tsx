@@ -5,6 +5,7 @@ import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { FinanceEntryForm } from "@/components/entry-form"
 import { SectionCards } from "@/components/section-cards"
 import { SiteHeader } from "@/components/site-header"
+import { AnnualIncomeExpensesChart } from "@/components/annual-income-expenses-chart"
 import {
   SidebarInset,
   SidebarProvider,
@@ -32,10 +33,17 @@ export default function Page() {
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
               {/* Pass the timeRange to SectionCards */}
               <SectionCards timeRange={timeRange} /> 
+              
+              {/* Annual Income vs Expenses Chart */}
               <div className="px-4 lg:px-6">
-              {/* Pass both timeRange and setTimeRange to ChartAreaInteractive */}
-              <ChartAreaInteractive timeRange={timeRange} setTimeRange={setTimeRange} />
+                <AnnualIncomeExpensesChart />
               </div>
+              
+              <div className="px-4 lg:px-6">
+                {/* Pass both timeRange and setTimeRange to ChartAreaInteractive */}
+                <ChartAreaInteractive timeRange={timeRange} setTimeRange={setTimeRange} />
+              </div>
+              
               <FinanceEntryForm />
             </div>
           </div>

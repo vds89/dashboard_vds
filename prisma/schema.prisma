@@ -1,7 +1,7 @@
 // prisma/schema.prisma
 
 generator client {
-  provider        = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -9,54 +9,54 @@ datasource db {
 }
 
 model vds_finance {
-  date    DateTime @id
-  income  Float
-  outcome Float
+  // Anche qui, usa @db.Date se ti serve solo la data senza ora per evitare drift
+  date    DateTime @id @db.Date
+  income  Float    @default(0)
+  outcome Float    @default(0)
 }
 
 model MonthlyPortfolio {
-  id                String   @id @default(cuid())
-  month             DateTime @unique
-  fixedIncome       Float    @default(0)
-  variableIncome    Float    @default(0)
-  fixedExpenses     Float    @default(0)
-  variableExpenses  Float    @default(0)
-  ing               Float    @default(0)
-  bbva              Float    @default(0)
-  revolut           Float    @default(0)
-  directa           Float    @default(0)
-  mwrd              Float    @default(0)
-  smea              Float    @default(0)
-  xmme              Float    @default(0)
-  bond              Float    @default(0)
-  eth               Float    @default(0)
-  sol               Float    @default(0)
-  link              Float    @default(0)
-  op                Float    @default(0)
-  usdt              Float    @default(0)
-  cometa            Float    @default(0)
-  ethPrice          Float    @default(0)
-  solPrice          Float    @default(0)
-  linkPrice         Float    @default(0)
-  opPrice           Float    @default(0)
-  mwrdPrice         Float    @default(0)
-  smeaPrice         Float    @default(0)
-  xmmePrice         Float    @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  // 1. CHIAVE PRIMARIA: month è l'ID univoco. 
+  // Rimuovere qualsiasi riferimento a "id" nel seed perché Prisma userà "month"
+  month            DateTime @id @db.Date
   
-  @@index([month])
-}
+  fixedIncome      Float    @default(0)
+  variableIncome   Float    @default(0)
+  fixedExpenses    Float    @default(0)
+  variableExpenses Float    @default(0)
+  
+  // Conti e Cash
+  ing              Float    @default(0)
+  bbva             Float    @default(0)
+  revolut          Float    @default(0)
+  directa          Float    @default(0)
+  
+  // Investimenti (Quantità)
+  mwrd             Float    @default(0)
+  smea             Float    @default(0)
+  xmme             Float    @default(0)
+  bond             Float    @default(0)
+  cometa           Float    @default(0)
+  
+  // Crypto (Quantità)
+  eth              Float    @default(0)
+  sol              Float    @default(0)
+  link             Float    @default(0)
+  op               Float    @default(0)
+  usdt             Float    @default(0)
+  
+  // Prezzi Asset (Cruciali per i calcoli della dashboard)
+  ethPrice         Float    @default(0)
+  solPrice         Float    @default(0)
+  linkPrice        Float    @default(0)
+  opPrice          Float    @default(0)
+  mwrdPrice        Float    @default(0)
+  smeaPrice        Float    @default(0)
+  xmmePrice        Float    @default(0)
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-model PortfolioAssetClass {
-  id          String   @id @default(cuid())
-  assetClass  String
-  ticker      String
-  quantity    Float
-  valueEUR    Float    @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@unique([assetClass, ticker])
-  @@index([assetClass])
+  // 2. OTTIMIZZAZIONE: L'index su month è superfluo se month è già @id.
+  // In Postgres, la Primary Key crea automaticamente un indice B-Tree.
 }
