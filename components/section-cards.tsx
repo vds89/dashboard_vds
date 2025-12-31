@@ -115,7 +115,7 @@ export function SectionCards({ timeRange }: { timeRange: string }) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 md:grid-cols-2 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 md:grid-cols-2 xl:grid-cols-3">
       
       {assetSummary.map((asset) => (
         <Card key={asset.assetClass} className="hover:shadow-md transition-all duration-300 overflow-hidden">

@@ -1,5 +1,7 @@
 // lib/asset-config.ts
 
+import { getUsdToEurRate, convertUsdToEur } from './usd-eur-converter';
+
 export const ASSET_MAPPING = {
   Liquidity: ['ing', 'bbva', 'revolut', 'directa'],
   Stock: ['mwrd', 'smea', 'xmme'],
@@ -34,10 +36,7 @@ function getTargetDateStr(date: Date): string {
 export const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 /**
- * Fetch Prezzo ETF da AlphaVantage con gestione errori e ritardo opzionale
- */
-/**
- * Recupera il prezzo ETF da AlphaVantage con logica di lookback e correzione valuta
+ * Fetch Prezzo ETF da AlphaVantage (già in EUR)
  */
 export async function fetchEtfPrice(ticker: string, targetDate: Date): Promise<number> {
   const symbol = ETF_SYMBOLS[ticker];
@@ -67,13 +66,10 @@ export async function fetchEtfPrice(ticker: string, targetDate: Date): Promise<n
     const lastRefreshedDate = new Date(lastRefreshedStr);
     const lastDayOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
 
-    // 1. Definiamo la data di partenza come CONST
     const startDate = lastDayOfMonth > lastRefreshedDate ? lastRefreshedDate : lastDayOfMonth;
 
     let price = 0;
     
-    // 2. Nel loop creiamo una nuova istanza ogni volta basata sull'indice i
-    // Questo evita di mutare searchDate e risolve l'errore di ESLint
     for (let i = 0; i <= 7; i++) {
       const searchDate = new Date(startDate);
       searchDate.setDate(searchDate.getDate() - i); 
@@ -86,6 +82,7 @@ export async function fetchEtfPrice(ticker: string, targetDate: Date): Promise<n
       }
     }
 
+    // SMEA correction (pence to pounds)
     if (ticker === 'smea' && price > 1000) {
       price = price / 100;
     }
@@ -99,23 +96,42 @@ export async function fetchEtfPrice(ticker: string, targetDate: Date): Promise<n
 }
 
 /**
- * Recupera il prezzo Crypto da CryptoCompare
+ * Recupera il prezzo Crypto da CryptoCompare (in USD) e converte in EUR
  */
 export async function fetchCryptoPrice(symbol: string, date: Date): Promise<number> {
-  if (symbol.toLowerCase() === 'usdt') return 0.90; // Prezzo fisso richiesto
+  // USDT fixed at 0.90 EUR as requested
+  if (symbol.toLowerCase() === 'usdt') return 0.90;
   
-  const dateStr = getTargetDateStr(date);
-  const timestamp = Math.floor(new Date(dateStr).getTime() / 1000);
-
   try {
+    // 1. Get crypto price in USD
+    const dateStr = getTargetDateStr(date);
+    const timestamp = Math.floor(new Date(dateStr).getTime() / 1000);
+    
     const apiKey = process.env.CRYPTOCOMPARE_API_KEY;
-    const res = await fetch(
-      `https://min-api.cryptocompare.com/data/pricehistorical?fsym=${symbol.toUpperCase()}&tsyms=EUR&ts=${timestamp}&api_key=${apiKey}`
+    const cryptoResponse = await fetch(
+      `https://min-api.cryptocompare.com/data/pricehistorical?fsym=${symbol.toUpperCase()}&tsyms=USD&ts=${timestamp}&api_key=${apiKey}`
     );
-    const data = await res.json();
-    return data[symbol.toUpperCase()]?.["EUR"] || 0;
+    
+    const cryptoData = await cryptoResponse.json();
+    const priceUsd = cryptoData[symbol.toUpperCase()]?.["USD"] || 0;
+    
+    if (priceUsd === 0) {
+      console.warn(`No USD price found for ${symbol} on ${dateStr}`);
+      return 0;
+    }
+    
+    // 2. Get USD/EUR exchange rate for that date
+    const exchangeRate = await getUsdToEurRate(date);
+    
+    // 3. Convert USD to EUR
+    const priceEur = convertUsdToEur(priceUsd, exchangeRate);
+    
+    console.log(`💱 ${symbol.toUpperCase()}: $${priceUsd.toFixed(2)} × ${exchangeRate.toFixed(4)} = €${priceEur.toFixed(2)}`);
+    
+    return priceEur;
+    
   } catch (error) {
-    console.error(`Errore fetch Crypto ${symbol}:`, error);
+    console.error(`Error fetch Crypto ${symbol}:`, error);
     return 0;
   }
 }
