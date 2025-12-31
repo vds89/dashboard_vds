@@ -1,12 +1,18 @@
 // lib/usd-eur-converter.ts
 
+// 1. Definiamo l'interfaccia per la struttura dei tassi dell'API
+interface FrankfurterRates {
+  [date: string]: {
+    EUR: number;
+  };
+}
+
 /**
  * Fetches historical USD to EUR exchange rate for a specific date
- * Uses Frankfurter API (free, no API key required)
  */
 export async function getUsdToEurRate(date: Date): Promise<number> {
   try {
-    const dateStr = date.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    const dateStr = date.toISOString().split('T')[0];
     
     const response = await fetch(
       `https://api.frankfurter.app/${dateStr}?from=USD&to=EUR`
@@ -17,7 +23,8 @@ export async function getUsdToEurRate(date: Date): Promise<number> {
       return getFallbackRate(date);
     }
     
-    const data = await response.json();
+    // Tipizziamo la risposta singola
+    const data = await response.json() as { rates: { EUR: number } };
     return data.rates.EUR || getFallbackRate(date);
   } catch (error) {
     console.error(`Error fetching USD/EUR rate:`, error);
@@ -27,7 +34,6 @@ export async function getUsdToEurRate(date: Date): Promise<number> {
 
 /**
  * Batch fetch multiple USD to EUR rates for a date range
- * More efficient for bulk operations
  */
 export async function getUsdToEurRatesBatch(
   startDate: Date,
@@ -45,12 +51,13 @@ export async function getUsdToEurRatesBatch(
       throw new Error(`Failed to fetch batch rates`);
     }
     
-    const data = await response.json();
+    // 2. Tipizziamo la risposta batch
+    const data = await response.json() as { rates: FrankfurterRates };
     const ratesMap = new Map<string, number>();
     
-    // Convert response to Map for easy lookup
-    Object.entries(data.rates).forEach(([date, rates]: [string, any]) => {
-      ratesMap.set(date, rates.EUR);
+    // 3. Rimuoviamo [string, any] e usiamo la corretta tipizzazione
+    Object.entries(data.rates).forEach(([date, details]) => {
+      ratesMap.set(date, details.EUR);
     });
     
     return ratesMap;
@@ -62,12 +69,10 @@ export async function getUsdToEurRatesBatch(
 
 /**
  * Fallback rates based on historical averages when API fails
- * Source: ECB historical data averages by year
  */
 function getFallbackRate(date: Date): number {
   const year = date.getFullYear();
   
-  // Historical yearly average rates USD to EUR
   const fallbackRates: Record<number, number> = {
     2015: 0.9015,
     2016: 0.9034,
@@ -79,20 +84,14 @@ function getFallbackRate(date: Date): number {
     2022: 0.9504,
     2023: 0.9251,
     2024: 0.9264,
-    2025: 0.95, // Estimated
+    2025: 0.95,
   };
   
-  return fallbackRates[year] || 0.92; // Default fallback
+  return fallbackRates[year] || 0.92;
 }
 
-/**
- * Convert USD price to EUR
- */
 export function convertUsdToEur(usdAmount: number, exchangeRate: number): number {
   return usdAmount * exchangeRate;
 }
 
-/**
- * Utility to add delay between API calls
- */
 export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
