@@ -1,43 +1,21 @@
-// components/annual-income-expenses-chart.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import { TrendingUp } from "lucide-react";
+import { Bar, Line, ComposedChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from "recharts";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
 interface AnnualMetric {
   year: number;
   totalIncome: number;
   totalExpenses: number;
-  netSavings: number;
+  netSavings: number; // Questo nel tuo codice API è il Saving Rate (0-1)
 }
 
 const chartConfig = {
-  totalIncome: {
-    label: "Total Income",
-    color: "var(--primary)",
-  },
-  totalExpenses: {
-    label: "Total Expenses",
-    color: "var(--chart-5)",
-  },
+  totalIncome: { label: "Income", color: "var(--primary)" },
+  totalExpenses: { label: "Expenses", color: "var(--chart-5)" },
+  netSavings: { label: "Saving Rate", color: "#10b981" }, // Verde smeraldo per la linea
 } satisfies ChartConfig;
 
 export function AnnualIncomeExpensesChart() {
@@ -51,7 +29,7 @@ export function AnnualIncomeExpensesChart() {
         const json = await response.json();
         setData(json.annualMetrics || []);
       } catch (error) {
-        console.error("Error fetching annual metrics:", error);
+        console.error("Error:", error);
       } finally {
         setLoading(false);
       }
@@ -59,114 +37,99 @@ export function AnnualIncomeExpensesChart() {
     fetchData();
   }, []);
 
-  if (loading) {
+  if (loading || data.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Annual Income vs Expenses</CardTitle>
-          <CardDescription>Loading...</CardDescription>
-        </CardHeader>
-        <CardContent className="h-[300px] flex items-center justify-center">
-          <div className="animate-pulse text-muted-foreground">Loading chart data...</div>
-        </CardContent>
+      <Card className="h-[250px] flex items-center justify-center">
+        <div className="text-sm text-muted-foreground animate-pulse">
+          {loading ? "Loading metrics..." : "No data available"}
+        </div>
       </Card>
     );
   }
 
-  if (data.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Annual Income vs Expenses</CardTitle>
-          <CardDescription>No data available</CardDescription>
-        </CardHeader>
-        <CardContent className="h-[300px] flex items-center justify-center">
-          <div className="text-muted-foreground">No annual data found</div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Calculate average net savings
-  const avgNetSavings = data.reduce((acc, d) => acc + d.netSavings, 0) / data.length;
-  const latestYear = data[data.length - 1];
-  const savingsGrowth = latestYear.netSavings > 0 ? "positive" : "negative";
+  const latest = data[data.length - 1];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Annual Income vs Expenses</CardTitle>
-        <CardDescription>
-          Yearly comparison of total income and expenses from portfolio data
-        </CardDescription>
+    <Card className="overflow-hidden border-none shadow-none sm:border sm:shadow-sm">
+      <CardHeader className="p-4 pb-0 flex flex-row items-center justify-between space-y-0">
+        <div className="grid gap-1">
+          <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+            Financial Performance
+          </CardTitle>
+          <CardDescription className="text-2xl font-bold text-foreground">
+            Income-Expenses-Saving Rate Overview
+          </CardDescription>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-bold text-emerald-500">
+            {(latest.netSavings * 100).toFixed(1)}%
+          </div>
+          <p className="text-[10px] uppercase text-muted-foreground font-medium">{latest.year} Saving Rate</p>
+        </div>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig}>
-          <BarChart accessibilityLayer data={data}>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="year"
-              tickLine={false}
-              tickMargin={10}
-              axisLine={false}
+
+      <CardContent className="p-2 pt-4">
+        <ChartContainer config={chartConfig} className="aspect-auto h-[200px] w-full">
+          <ComposedChart data={data} margin={{ top: 5, right: -10, left: -20, bottom: 0 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
+            <XAxis 
+              dataKey="year" 
+              tickLine={false} 
+              axisLine={false} 
+              fontSize={11} 
+              tickMargin={8}
             />
-            <YAxis
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(value) => `€${(value / 1000).toFixed(0)}k`}
+            {/* Asse Y Sinistro: Valuta */}
+            <YAxis 
+              yAxisId="left"
+              tickLine={false} 
+              axisLine={false} 
+              fontSize={10} 
+              tickFormatter={(v) => `€${v / 1000}k`} 
             />
-            <ChartTooltip
-              content={({ active, payload }) => {
-                if (!active || !payload) return null;
-                const data = payload[0]?.payload;
-                return (
-                  <ChartTooltipContent
-                    active={active}
-                    payload={payload}
-                    label={`Year ${data.year}`}
-                    indicator="dashed"
-                    formatter={(value, name) => {
-                      const label = name === "totalIncome" ? "Income" : "Expenses";
-                      return [
-                        <>
-                          <div className="text-xs text-muted-foreground">{label}</div>
-                          <div className="font-medium">€{Number(value).toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
-                          {name === "totalIncome" && data.netSavings !== undefined && (
-                            <div className="text-xs text-muted-foreground mt-1">
-                              Net: €{data.netSavings.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                            </div>
-                          )}
-                        </>,
-                        ""
-                      ];
-                    }}
-                  />
-                );
-              }}
+            {/* Asse Y Destro: Percentuale (Invisibile per pulizia, ma serve per la scala) */}
+            <YAxis 
+              yAxisId="right" 
+              orientation="right" 
+              display="none" 
+              domain={[0, 1]} 
             />
-            <ChartLegend content={<ChartLegendContent />} />
+            
+            <ChartTooltip 
+              cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
+              content={<ChartTooltipContent indicator="dot" />} 
+            />
+            
             <Bar 
+              yAxisId="left"
               dataKey="totalIncome" 
               fill="var(--color-totalIncome)" 
-              radius={4} 
+              radius={[2, 2, 0, 0]} 
+              barSize={30}
             />
             <Bar 
+              yAxisId="left"
               dataKey="totalExpenses" 
               fill="var(--color-totalExpenses)" 
-              radius={4} 
+              radius={[2, 2, 0, 0]} 
+              barSize={30}
             />
-          </BarChart>
+            
+            {/* Linea del Saving Rate sovrapposta */}
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="netSavings"
+              stroke="var(--color-netSavings)"
+              strokeWidth={3}
+              dot={{ r: 4, fill: "var(--color-netSavings)", strokeWidth: 2, stroke: "#fff" }}
+              activeDot={{ r: 6 }}
+            />
+            
+            <ChartLegend content={<ChartLegendContent className="text-[10px]" />} />
+          </ComposedChart>
         </ChartContainer>
       </CardContent>
-      <CardFooter className="flex-col items-start gap-2 text-sm">
-        <div className="flex gap-2 font-medium leading-none">
-          {savingsGrowth === "positive" ? "Positive" : "Negative"} net savings for {latestYear.year}
-          <TrendingUp className={`h-4 w-4 ${savingsGrowth === "negative" ? "rotate-180" : ""}`} />
-        </div>
-        <div className="leading-none text-muted-foreground">
-          Average annual net savings: €{avgNetSavings.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-        </div>
-      </CardFooter>
     </Card>
   );
 }
