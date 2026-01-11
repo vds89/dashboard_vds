@@ -2,6 +2,7 @@
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
+import { ChartPortfolioComposition } from "@/components/chart-portfolio-composition" // Import nuovo grafico
 import { FinanceEntryForm } from "@/components/entry-form"
 import { SectionCards } from "@/components/section-cards"
 import { SiteHeader } from "@/components/site-header"
@@ -39,9 +40,13 @@ export default function Page() {
                 <AnnualIncomeExpensesChart />
               </div>
               
-              <div className="px-4 lg:px-6">
-                {/* Pass both timeRange and setTimeRange to ChartAreaInteractive */}
+              {/* Grid Container for Side-by-Side Charts */}
+              <div className="grid gap-4 px-4 lg:grid-cols-2 lg:px-6">
+                {/* Left: Income vs Outcome Moving Average */}
                 <ChartAreaInteractive timeRange={timeRange} setTimeRange={setTimeRange} />
+                
+                {/* Right: Portfolio Composition & Net Worth */}
+                <ChartPortfolioComposition />
               </div>
               
               <FinanceEntryForm />
