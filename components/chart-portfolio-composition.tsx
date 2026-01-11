@@ -15,7 +15,6 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ChartLegend,
   ChartLegendContent,
 } from "@/components/ui/chart"
 
@@ -71,8 +70,19 @@ interface RawPortfolioData {
   usdt: number;
 }
 
+interface PortfolioCompositionData {
+  date: string;
+  fullDate: string;
+  liquidity: number;
+  stocks: number;
+  bond: number;
+  pension: number;
+  crypto: number;
+  netWorth: number;
+}
+
 export function ChartPortfolioComposition() {
-  const [chartData, setChartData] = React.useState<any[]>([])
+  const [chartData, setChartData] = React.useState<PortfolioCompositionData[]>([])
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {

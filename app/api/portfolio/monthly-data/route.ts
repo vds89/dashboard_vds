@@ -26,6 +26,23 @@ export async function POST(request: Request) {
     // Per brevità qui riporto solo la struttura di upsert, il fetch rimane invariato:
     
     // [Nota: Assicurati di mantenere qui il codice di fetchCryptoPrice/fetchEtfPrice che avevi prima]
+    // Recupero Crypto in parallelo (CryptoCompare ha limiti alti)
+    const [ethP, solP, linkP, opP] = await Promise.all([
+      fetchCryptoPrice('eth', monthDate),
+      fetchCryptoPrice('sol', monthDate),
+      fetchCryptoPrice('link', monthDate),
+      fetchCryptoPrice('op', monthDate),
+    ]);
+
+    // 2. Recupero ETF in sequenza con delay (AlphaVantage Free Limit: 5 per min)
+    // Usiamo await singoli e delay per non colpire il rate limit
+    const mwrdP = await fetchEtfPrice('mwrd', monthDate);
+    await delay(1500); // 1.5 secondi di pausa
+    
+    const smeaP = await fetchEtfPrice('smea', monthDate);
+    await delay(1500); // 1.5 secondi di pausa
+    
+    const xmmeP = await fetchEtfPrice('xmme', monthDate);
 
     const createData = {
        // ... tutti i campi ...

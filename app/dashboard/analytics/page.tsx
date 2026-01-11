@@ -7,7 +7,6 @@ import { toast } from "sonner"
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
