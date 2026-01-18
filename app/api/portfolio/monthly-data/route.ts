@@ -18,12 +18,29 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     
-    // 1. Normalizzazione data al 1° del mese UTC
-    const tempDate = new Date(body.month);
-    const monthDate = new Date(Date.UTC(tempDate.getUTCFullYear(), tempDate.getUTCMonth(), 1, 0, 0, 0));
+    // ✅ FIXED: Proper UTC date parsing for date-only fields
+    // Input should be "YYYY-MM-DD" format from frontend
+    const inputDate = body.month;
+    
+    // Parse as UTC date at midnight
+    const tempDate = new Date(inputDate + 'T00:00:00.000Z');
+    
+    // Create normalized UTC date on the 1st of the month
+    const monthDate = new Date(Date.UTC(
+      tempDate.getUTCFullYear(), 
+      tempDate.getUTCMonth(), 
+      1, 
+      0, 0, 0, 0
+    ));
+
+    console.log('📅 Processing date:', {
+      received: inputDate,
+      parsed: monthDate.toISOString(),
+      dateOnly: monthDate.toISOString().split('T')[0]
+    });
 
     // 2. Definizione della soglia temporale (1 Gennaio 2026)
-    const cutoffDate = new Date(Date.UTC(2026, 0, 1)); // Anno, Mese (0=Gen), Giorno
+    const cutoffDate = new Date(Date.UTC(2026, 0, 1));
     const shouldFetchPrices = monthDate >= cutoffDate;
 
     // Inizializziamo variabili per i prezzi
@@ -31,7 +48,7 @@ export async function POST(request: Request) {
 
     // 3. Logica Condizionale: Fetch solo se siamo nel 2026 o oltre
     if (shouldFetchPrices) {
-      console.log(`📅 Date ${monthDate.toISOString()} is >= 2026. Fetching new prices...`);
+      console.log(`📅 Date ${monthDate.toISOString().split('T')[0]} is >= 2026. Fetching new prices...`);
 
       // Recupero Crypto in parallelo
       [ethP, solP, linkP, opP] = await Promise.all([
@@ -48,14 +65,10 @@ export async function POST(request: Request) {
       await delay(1500);
       xmmeP = await fetchEtfPrice('xmme', monthDate);
     } else {
-      console.log(`📅 Date ${monthDate.toISOString()} is historical (< 2026). Skipping fetch.`);
-      // Se non fetchiamo, lasciamo undefined. 
-      // Se l'utente ha passato dei prezzi manuali nel body, potremmo usarli qui:
-      // ethP = body.ethPrice; 
+      console.log(`📅 Date ${monthDate.toISOString().split('T')[0]} is historical (< 2026). Skipping fetch.`);
     }
 
-    // 4. Preparazione Dati Base (Quantità e Valori Fissi)
-    // Questi vengono sempre salvati/aggiornati
+    // 4. Preparazione Dati Base
     const baseData = {
       month: monthDate,
       fixedIncome: Number(body.fixedIncome) || 0,
@@ -79,36 +92,30 @@ export async function POST(request: Request) {
     };
 
     // 5. Preparazione Oggetto Prezzi
-    // Creiamo un oggetto che contiene i prezzi SOLO se sono stati fetchati o passati
     const priceData: Record<string, number> = {};
 
     if (shouldFetchPrices) {
-        // Se abbiamo fetchato, usiamo i nuovi valori (o 0 se la fetch ha fallito restituendo undefined/null)
-        priceData.mwrdPrice = mwrdP || 0;
-        priceData.smeaPrice = smeaP || 0;
-        priceData.xmmePrice = xmmeP || 0;
-        priceData.ethPrice = ethP || 0;
-        priceData.solPrice = solP || 0;
-        priceData.linkPrice = linkP || 0;
-        priceData.opPrice = opP || 0;
+      priceData.mwrdPrice = mwrdP || 0;
+      priceData.smeaPrice = smeaP || 0;
+      priceData.xmmePrice = xmmeP || 0;
+      priceData.ethPrice = ethP || 0;
+      priceData.solPrice = solP || 0;
+      priceData.linkPrice = linkP || 0;
+      priceData.opPrice = opP || 0;
     } else {
-        // Se NON abbiamo fetchato (storico), controlliamo se l'utente ha passato prezzi manuali nel body
-        // Altrimenti non aggiungiamo nulla a priceData, così l'UPDATE non sovrascrive i vecchi prezzi nel DB con 0.
-        if (body.mwrdPrice !== undefined) priceData.mwrdPrice = Number(body.mwrdPrice);
-        if (body.smeaPrice !== undefined) priceData.smeaPrice = Number(body.smeaPrice);
-        if (body.xmmePrice !== undefined) priceData.xmmePrice = Number(body.xmmePrice);
-        if (body.ethPrice !== undefined) priceData.ethPrice = Number(body.ethPrice);
-        if (body.solPrice !== undefined) priceData.solPrice = Number(body.solPrice);
-        if (body.linkPrice !== undefined) priceData.linkPrice = Number(body.linkPrice);
-        if (body.opPrice !== undefined) priceData.opPrice = Number(body.opPrice);
+      if (body.mwrdPrice !== undefined) priceData.mwrdPrice = Number(body.mwrdPrice);
+      if (body.smeaPrice !== undefined) priceData.smeaPrice = Number(body.smeaPrice);
+      if (body.xmmePrice !== undefined) priceData.xmmePrice = Number(body.xmmePrice);
+      if (body.ethPrice !== undefined) priceData.ethPrice = Number(body.ethPrice);
+      if (body.solPrice !== undefined) priceData.solPrice = Number(body.solPrice);
+      if (body.linkPrice !== undefined) priceData.linkPrice = Number(body.linkPrice);
+      if (body.opPrice !== undefined) priceData.opPrice = Number(body.opPrice);
     }
 
     // 6. Esecuzione Upsert
     const result = await prisma.monthlyPortfolio.upsert({    
       where: { month: monthDate },
       
-      // CREATE: Se stiamo creando un NUOVO record, dobbiamo inserire tutto. 
-      // Se siamo nel passato e non abbiamo prezzi, metteremo 0 (o quelli manuali).
       create: {
         ...baseData,
         mwrdPrice: priceData.mwrdPrice || 0,
@@ -120,18 +127,17 @@ export async function POST(request: Request) {
         opPrice: priceData.opPrice || 0,
       },
 
-      // UPDATE: Aggiorniamo le quantità (baseData).
-      // Aggiorniamo i prezzi SOLO se priceData contiene chiavi (cioè se abbiamo fetchato o inserito manualmente).
-      // Se è un record storico e non abbiamo fetchato, i prezzi nel DB rimangono INVARIATI.
       update: {
         ...baseData,
         ...priceData 
       }
     });
     
+    console.log('✅ Upsert successful:', result.month.toISOString().split('T')[0]);
+    
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Error saving data:', error);
+    console.error('❌ Error saving data:', error);
     return NextResponse.json(
       { 
         error: 'Failed to save data', 
@@ -151,17 +157,97 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Month parameter is required' }, { status: 400 });
     }
 
-    const dateToDelete = new Date(monthParam);
+    console.log('🗑️ Received delete request for:', monthParam);
 
+    // ✅ FIXED: Handle both ISO timestamp and date-only formats
+    let normalizedDate: Date;
+    
+    try {
+      // Remove any URL encoding artifacts and parse the date
+      const cleanDateStr = decodeURIComponent(monthParam);
+      
+      // Extract just the date part (YYYY-MM-DD) regardless of format
+      let dateOnly: string;
+      
+      if (cleanDateStr.includes('T')) {
+        // It's an ISO timestamp: "2026-01-01T00:00:00.000Z"
+        dateOnly = cleanDateStr.split('T')[0];
+      } else if (cleanDateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // It's already date-only: "2026-01-01"
+        dateOnly = cleanDateStr;
+      } else {
+        throw new Error('Invalid date format');
+      }
+
+      // Parse as UTC date at midnight on the 1st of the month
+      const tempDate = new Date(dateOnly + 'T00:00:00.000Z');
+      
+      // Validate the date
+      if (isNaN(tempDate.getTime())) {
+        throw new Error('Invalid date value');
+      }
+
+      // Create normalized UTC date
+      normalizedDate = new Date(Date.UTC(
+        tempDate.getUTCFullYear(),
+        tempDate.getUTCMonth(),
+        1,
+        0, 0, 0, 0
+      ));
+
+      console.log('✅ Parsed deletion date:', {
+        original: monthParam,
+        cleaned: cleanDateStr,
+        dateOnly: dateOnly,
+        normalized: normalizedDate.toISOString().split('T')[0]
+      });
+
+    } catch (parseError) {
+      console.error('❌ Date parsing error:', parseError);
+      return NextResponse.json(
+        { 
+          error: 'Invalid date format', 
+          details: parseError instanceof Error ? parseError.message : 'Could not parse date',
+          received: monthParam
+        }, 
+        { status: 400 }
+      );
+    }
+
+    // Perform the deletion
     await prisma.monthlyPortfolio.delete({
       where: { 
-        month: dateToDelete 
+        month: normalizedDate 
       },
     });
 
-    return NextResponse.json({ success: true });
+    console.log('✅ Successfully deleted record for:', normalizedDate.toISOString().split('T')[0]);
+
+    return NextResponse.json({ 
+      success: true,
+      deletedMonth: normalizedDate.toISOString().split('T')[0]
+    });
+
   } catch (error) {
-    console.error('Error deleting data:', error);
-    return NextResponse.json({ error: 'Failed to delete data' }, { status: 500 });
+    console.error('❌ Error deleting data:', error);
+    
+    // Check if it's a "record not found" error
+    if (error instanceof Error && error.message.includes('Record to delete does not exist')) {
+      return NextResponse.json(
+        { 
+          error: 'Record not found',
+          details: 'No portfolio entry exists for the specified month'
+        }, 
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      { 
+        error: 'Failed to delete data',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, 
+      { status: 500 }
+    );
   }
-}
+} 

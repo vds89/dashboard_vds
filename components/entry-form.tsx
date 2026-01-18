@@ -81,31 +81,34 @@ export function FinanceEntryForm() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-const handleSubmit = async () => {
-  if (!formData.month) {
-    setMessage("Please select a month");
-    return;
-  }
+  const handleSubmit = async () => {
+    if (!formData.month) {
+      setMessage("Please select a month");
+      return;
+    }
 
-  setLoading(true);
-  try {
-    // 1. Estraiamo anno e mese (0-indexed)
-    const year = formData.month.getFullYear();
-    const month = formData.month.getMonth() + 1; // +1 perché i mesi in JS vanno da 0 a 11
+    setLoading(true);
+    setMessage(""); // Clear previous messages
+    
+    try {
+      // ✅ FIXED: Create proper UTC date at midnight on the 1st of the month
+      const selectedDate = formData.month;
+      const year = selectedDate.getFullYear();
+      const month = selectedDate.getMonth(); // 0-indexed (0 = January)
+      
+      // Create UTC date at 00:00:00 on the 1st day of the month
+      const utcDate = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+      
+      // Convert to YYYY-MM-DD format (date-only, no time component)
+      const monthString = utcDate.toISOString().split('T')[0]; // "2025-01-01"
 
-    // 2. Creiamo una stringa ISO "pura" per il primo del mese a mezzogiorno
-    // Usiamo le 12:00 invece delle 00:00 per evitare che piccoli scarti di fuso orario
-    // riportino la data al giorno prima.
-    const monthString = `${year}-${month.toString().padStart(2, '0')}-01T12:00:00.000Z`;
+      console.log('📅 Submitting date:', monthString);
 
-    const res = await fetch("/api/portfolio/monthly-data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-          // Inviamo la data formattata come stringa YYYY-MM-DD
-          // o usiamo ISO string dopo aver azzerato i minuti
-          ...formData, // invia gli altri campi
-          month: monthString, // Questa stringa è univoca
+      const res = await fetch("/api/portfolio/monthly-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          month: monthString, // Send as date string
           fixedIncome: parseFloat(formData.fixedIncome) || 0,
           variableIncome: parseFloat(formData.variableIncome) || 0,
           fixedExpenses: parseFloat(formData.fixedExpenses) || 0,
@@ -128,10 +131,14 @@ const handleSubmit = async () => {
       });
       
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Something went wrong");
       
-      setMessage("Portfolio entry saved successfully!");
-      // Reset form
+      if (!res.ok) {
+        throw new Error(data.error || data.details || "Something went wrong");
+      }
+      
+      setMessage("✅ Portfolio entry saved successfully!");
+      
+      // Reset form after successful submission
       setFormData({
         month: undefined,
         fixedIncome: "",
@@ -153,11 +160,16 @@ const handleSubmit = async () => {
         usdt: "",
         cometa: "",
       });
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setMessage(""), 3000);
+      
     } catch (err: unknown) {
+      console.error('❌ Submission error:', err);
       if (err instanceof Error) {
-        setMessage(err.message);
+        setMessage(`❌ Error: ${err.message}`);
       } else {
-        setMessage("An unknown error occurred");
+        setMessage("❌ An unknown error occurred");
       }
     } finally {
       setLoading(false);
@@ -325,7 +337,7 @@ const handleSubmit = async () => {
             <TabsContent value="stocks" className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="mwrd">MWRD (Stocks)</Label>
+                  <Label htmlFor="mwrd">MWRD (Shares)</Label>
                   <Input
                     id="mwrd"
                     type="number"
@@ -337,7 +349,7 @@ const handleSubmit = async () => {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="smea">SMEA (Stocks)</Label>
+                  <Label htmlFor="smea">SMEA (Shares)</Label>
                   <Input
                     id="smea"
                     type="number"
@@ -349,7 +361,7 @@ const handleSubmit = async () => {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="xmme">XMME (Stocks)</Label>
+                  <Label htmlFor="xmme">XMME (Shares)</Label>
                   <Input
                     id="xmme"
                     type="number"
@@ -470,8 +482,10 @@ const handleSubmit = async () => {
 
           {message && (
             <p className={cn(
-              "text-center text-sm",
-              message.includes("success") ? "text-green-600" : "text-red-600"
+              "text-center text-sm font-medium",
+              message.includes("success") || message.includes("✅") 
+                ? "text-green-600 dark:text-green-400" 
+                : "text-red-600 dark:text-red-400"
             )}>
               {message}
             </p>

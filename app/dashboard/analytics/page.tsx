@@ -123,38 +123,54 @@ export default function AnalyticsPage() {
     fetchData()
   }, [])
 
-  // Modificato per accettare la data (stringa o oggetto)
-  const handleDelete = async (monthRaw: string | Date) => {
-    if (!confirm("Are you sure you want to delete this record? This cannot be undone.")) return
+const handleDelete = async (monthRaw: string | Date) => {
+  if (!confirm("Are you sure you want to delete this record? This cannot be undone.")) return
 
-    // Assicuriamoci di avere una stringa valida da passare all'API
-    const monthString = typeof monthRaw === 'string' ? monthRaw : monthRaw.toISOString();
-    
-    setDeletingMonth(monthString)
-
-    try {
-      // Passiamo ?month=... invece di ?id=...
-      const response = await fetch(`/api/portfolio/monthly-data?month=${encodeURIComponent(monthString)}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) throw new Error("Failed to delete")
-
-      toast.success("Record deleted successfully")
-      
-      // Rimuoviamo dalla tabella locale usando il campo month
-      setData((prev) => prev.filter((item) => {
-        const itemDate = new Date(item.month).toISOString();
-        const deletedDate = new Date(monthString).toISOString();
-        return itemDate !== deletedDate;
-      }))
-    } catch (error) {
-      console.error("Error deleting:", error)
-      toast.error("Failed to delete record")
-    } finally {
-      setDeletingMonth(null)
-    }
+  // ✅ FIXED: Send date-only format to avoid parsing issues
+  let monthString: string;
+  
+  if (typeof monthRaw === 'string') {
+    // If it's already a string, extract date part
+    monthString = monthRaw.split('T')[0];
+  } else {
+    // If it's a Date object, format as YYYY-MM-DD
+    const year = monthRaw.getFullYear();
+    const month = (monthRaw.getMonth() + 1).toString().padStart(2, '0');
+    const day = monthRaw.getDate().toString().padStart(2, '0');
+    monthString = `${year}-${month}-${day}`;
   }
+  
+  console.log('🗑️ Deleting record for:', monthString);
+  
+  setDeletingMonth(monthString);
+
+  try {
+    // Send date-only format (no time component)
+    const response = await fetch(`/api/portfolio/monthly-data?month=${encodeURIComponent(monthString)}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.details || errorData.error || 'Failed to delete');
+    }
+
+    toast.success("Record deleted successfully");
+    
+    // Remove from local state
+    setData((prev) => prev.filter((item) => {
+      const itemDateStr = typeof item.month === 'string' 
+        ? item.month.split('T')[0]
+        : item.month.toISOString().split('T')[0];
+      return itemDateStr !== monthString;
+    }));
+  } catch (error) {
+    console.error("❌ Error deleting:", error);
+    toast.error(error instanceof Error ? error.message : "Failed to delete record");
+  } finally {
+    setDeletingMonth(null);
+  }
+};
 
   // Headers dinamici (escludendo 'month' dalla lista generica se vogliamo metterlo a mano, o tenendolo)
   // Qui lo teniamo ma gestiamo la colonna Actions separatamente
